@@ -36,6 +36,8 @@ return {
 			json = { "prettierd" },
 			jsonc = { "prettierd" },
 			css = { "prettierd" },
+			scss = { "prettierd" }, -- SCSS/LESS were already in the stylelint map (nvim-lint); prettierd formats them too
+			less = { "prettierd" },
 			html = { "prettierd" },
 			markdown = { "prettierd" },
 			yaml = { "prettierd" },
@@ -46,6 +48,22 @@ return {
 			svelte = { "prettierd" },
 			vue = { "prettierd" },
 			toml = { "taplo" }, -- taplo formats TOML; the same binary also serves as its LSP (servers/taplo.lua)
+			-- ── added-language formatters ──────────────────────────────────────────────
+			-- Each is a conform BUILTIN; conform auto-skips a formatter whose binary isn't on
+			-- PATH (shown as "not ready" in :ConformInfo, never an error), so these are self-gating
+			-- on a box that lacks the tool — matching servers/init.lua's binary-guard philosophy.
+			solidity = { "forge_fmt" }, -- `forge fmt` (Foundry, already root-detected via taplo) — the one prior formatter gap
+			ruby = { "rubocop" }, -- rubocop's --fix; also its linter (nvim-lint), gated there on .rubocop.yml
+			java = { "google-java-format" },
+			kotlin = { "ktlint" }, -- ktlint formats AND lints (nvim-lint)
+			php = { "php_cs_fixer" },
+			zig = { "zigfmt" }, -- `zig fmt` (needs zig on PATH)
+			sql = { "sql_formatter" },
+			proto = { "buf" }, -- `buf format`
+			graphql = { "prettierd" }, -- prettier speaks graphql natively
+			terraform = { "terraform_fmt" }, -- `terraform fmt` (needs terraform/tofu on PATH)
+			hcl = { "terraform_fmt" }, -- terraform fmt also formats generic HCL
+			nix = { "alejandra" },
 			-- NOTE: zsh is intentionally absent. shfmt is a POSIX/bash/mksh formatter and does
 			-- NOT understand zsh — it mangles zsh-only syntax (glob qualifiers (#qN), ${(%):-%x},
 			-- $+widgets[name-with-hyphens], &|, ...). There is no safe zsh formatter, so zsh files

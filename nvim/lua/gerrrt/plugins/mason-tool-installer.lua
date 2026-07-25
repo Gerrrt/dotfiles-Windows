@@ -70,6 +70,48 @@ return {
 				"stylelint", -- CSS/SCSS/LESS lint (only runs when a project stylelint config exists)
 				"markdownlint-cli2", -- markdown lint (mirrors the repo's markdown gate)
 				"yamllint", -- yaml lint
+				-- ── added languages: Ruby / Java / Kotlin / PHP / Zig / SQL / Protobuf / GraphQL /
+				--    Terraform / Nix. Grouped here (rather than split across the sections above) so
+				--    the whole new surface is legible in one place. Servers are enabled in
+				--    servers/init.lua; formatters live in conform.lua; linters (all gated) in
+				--    nvim-lint.lua; parsers in nvim-treesitter.lua.
+				--
+				-- RUNTIME CAVEAT (same shape as the debugpy note above): Mason installs several of
+				-- these through a language runtime, so they only succeed where that runtime exists —
+				-- Ruby (ruby-lsp, rubocop), the JVM (jdtls, kotlin-language-server, ktlint,
+				-- checkstyle, google-java-format), and PHP (php-cs-fixer, phpstan). mise pins
+				-- python/ruby/java/lua, so those resolve on a normal box; PHP is NOT pinned — install
+				-- php where you edit PHP. A failed install logs an error but never breaks nvim, and
+				-- servers/init.lua's binary-guard keeps an un-installed server dark instead of
+				-- spawn-erroring. Tools needing a NON-Mason binary on PATH: zigfmt→zig,
+				-- terraform_fmt→terraform/tofu, forge_fmt→foundry (as with the existing rust note).
+				-- ── LSP servers ──
+				"ruby-lsp",
+				"jdtls",
+				"kotlin-language-server",
+				"intelephense",
+				"zls",
+				"sqls",
+				"buf", -- Protobuf: buf CLI provides the LSP (buf lsp) AND the formatter (buf format)
+				"graphql-language-service-cli",
+				"terraform-ls",
+				"nil", -- Nix LSP
+				-- ── formatters (conform) ──
+				"rubocop", -- Ruby: formats AND lints (also the nvim-lint entry)
+				"google-java-format",
+				"ktlint", -- Kotlin: formats AND lints
+				"php-cs-fixer",
+				"sql-formatter",
+				"alejandra", -- Nix formatter
+				-- ── linters (nvim-lint, gated) ──
+				"checkstyle", -- Java
+				"phpstan", -- PHP
+				"sqlfluff", -- SQL (needs a dialect → gated on .sqlfluff)
+				"protolint", -- Protobuf
+				"tflint", -- Terraform
+				"statix", -- Nix anti-patterns (deadnix, its dead-code companion, is not in the Mason registry — install via nix/cargo if wanted)
+				-- ── SAST (nvim-lint, gated on a project semgrep config) ──
+				"semgrep",
 			},
 			-- Skip the startup install/update pass on engagement boxes (DOTFILES_OFFLINE=1),
 			-- which would otherwise hit the mason registry and download tools. See globals.lua.

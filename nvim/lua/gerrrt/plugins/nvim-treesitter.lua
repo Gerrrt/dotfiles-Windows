@@ -36,6 +36,18 @@ return {
 			"diff", -- diffview.nvim + git diff buffers
 			"gitcommit", -- commit message buffers (you write these via fugitive/lazygit)
 			"vimdoc", -- :help and plugin docs
+			-- ── added-language parsers (LSP + formatter + linter wired in the other manifests) ──
+			"ruby",
+			"java",
+			"kotlin",
+			"php",
+			"zig",
+			"sql",
+			"proto", -- Protobuf
+			"graphql",
+			"terraform", -- .tf
+			"hcl", -- generic HCL (Packer/Nomad/Vault) — no LSP, but highlighting + terraform fmt
+			"nix",
 		}
 
 		local group = vim.api.nvim_create_augroup("TreeSitterConfig", { clear = true })

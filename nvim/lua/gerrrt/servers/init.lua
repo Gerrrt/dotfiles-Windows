@@ -54,6 +54,18 @@ local servers = {
 	"html", -- HTML validation (emmet only expands)
 	"cssls", -- CSS/SCSS/LESS validation
 	"svelte", -- Svelte component intelligence (ts_ls owns <script>)
+	-- ── added languages (each with a formatter + parser, most with a linter; see the
+	--    plugins/conform.lua, plugins/nvim-lint.lua, plugins/nvim-treesitter.lua manifests) ──
+	"ruby_lsp", -- Ruby (Shopify ruby-lsp)
+	"jdtls", -- Java (Eclipse JDT)
+	"kotlin_language_server", -- Kotlin
+	"intelephense", -- PHP
+	"zls", -- Zig
+	"sqls", -- SQL
+	"buf_ls", -- Protobuf (buf lsp)
+	"graphql", -- GraphQL (attaches only in a project with a graphql config)
+	"terraformls", -- Terraform/HCL
+	"nil_ls", -- Nix
 }
 
 -- Register each server's config. pcall'd per module so one broken or missing server file degrades
@@ -107,6 +119,10 @@ local fn_cmd_binaries = {
 	yamlls = "yaml-language-server",
 	tailwindcss = "tailwindcss-language-server",
 	cssls = "vscode-css-language-server",
+	-- Added function-`cmd` servers (lspconfig ships their cmd as a probe that sets cwd to the
+	-- project root); name the global binary the guard should test for availability.
+	ruby_lsp = "ruby-lsp",
+	jdtls = "jdtls",
 }
 
 -- Is `binary` installed in a node_modules/.bin reachable upward from the cwd?
