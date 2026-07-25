@@ -24,5 +24,9 @@ return {
 		anti_conceal = { enabled = true }, -- show raw markup on the cursor line
 		code = { sign = false, width = "block", right_pad = 1 },
 		heading = { sign = false },
+		-- No LaTeX math rendering. Left enabled, render-markdown's healthcheck probes for the
+		-- `latex` treesitter parser and the latex2text/utftex CLIs (pylatexenc) — none installed
+		-- across the fleet — surfacing three :checkhealth warnings for a feature unused here.
+		latex = { enabled = false },
 	},
 }

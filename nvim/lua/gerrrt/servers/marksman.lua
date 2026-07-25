@@ -10,6 +10,9 @@
 -- ================================================================================================
 return {
 	cmd = { "marksman", "server" },
-	filetypes = { "markdown", "markdown.mdx" },
+	-- `markdown.mdx` was dropped: it is not a registered filetype in this config (no mdx detection,
+	-- no mdx usage), so `vim.lsp`'s healthcheck flagged it as an unknown filetype. Re-add it only
+	-- alongside real mdx filetype detection if .mdx editing becomes a thing.
+	filetypes = { "markdown" },
 	root_markers = { ".marksman.toml", ".git" },
 }

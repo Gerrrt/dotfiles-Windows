@@ -15,6 +15,57 @@ return {
 	event = "User FilePost",
 	config = function()
 		local lint = require("lint")
+
+		-- semgrep is NOT a nvim-lint builtin, so define it here. It runs `semgrep scan --json` on the
+		-- single file with the project's config (found upward — the same config the gating below keys
+		-- on, so `--config` is always resolvable when this actually runs) and maps the stable JSON
+		-- result schema to diagnostics. Guarded end-to-end: gated on a project semgrep config, marked
+		-- heavy (save-only), and the parser pcall-decodes so a bad/empty run degrades to no diagnostics.
+		lint.linters.semgrep = {
+			cmd = "semgrep",
+			stdin = false,
+			append_fname = true,
+			ignore_exitcode = true, -- semgrep exits non-zero when it finds something; that's not an error
+			args = function()
+				local cfg = vim.fs.find({ ".semgrep.yml", ".semgrep.yaml", "semgrep.yml", "semgrep.yaml" }, {
+					upward = true,
+					path = vim.fs.dirname(vim.api.nvim_buf_get_name(0)),
+					type = "file",
+				})[1]
+				local a = { "scan", "--json", "--quiet", "--disable-version-check" }
+				if cfg then
+					a[#a + 1] = "--config=" .. cfg
+				end
+				return a
+			end,
+			parser = function(output, _)
+				local diags = {}
+				local ok, decoded = pcall(vim.json.decode, output)
+				if not ok or type(decoded) ~= "table" or type(decoded.results) ~= "table" then
+					return diags
+				end
+				local sev = {
+					ERROR = vim.diagnostic.severity.ERROR,
+					WARNING = vim.diagnostic.severity.WARN,
+					INFO = vim.diagnostic.severity.INFO,
+				}
+				for _, r in ipairs(decoded.results) do
+					local s, e, extra = r.start or {}, r["end"] or {}, r.extra or {}
+					diags[#diags + 1] = {
+						lnum = math.max((s.line or 1) - 1, 0),
+						col = math.max((s.col or 1) - 1, 0),
+						end_lnum = math.max((e.line or 1) - 1, 0),
+						end_col = math.max((e.col or 1) - 1, 0),
+						severity = sev[extra.severity] or vim.diagnostic.severity.WARN,
+						source = "semgrep",
+						code = r.check_id,
+						message = extra.message or r.check_id or "semgrep finding",
+					}
+				end
+				return diags
+			end,
+		}
+
 		lint.linters_by_ft = {
 			lua = { "luacheck" },
 			sh = { "shellcheck" },
@@ -37,89 +88,138 @@ return {
 			less = { "stylelint" },
 			markdown = { "markdownlint-cli2" }, -- mirrors this repo's markdown gate; formatting stays prettierd (conform)
 			yaml = { "yamllint" }, -- schema validation is yamlls' job; yamllint adds style/lint rules
+			-- ── added-language linters ─────────────────────────────────────────────────
+			-- gated ones (rubocop/checkstyle/phpstan/sqlfluff/tflint) only run when a project
+			-- config is present — see `gated` below — so a bare buffer never eats a hard error.
+			ruby = { "rubocop" }, -- also the ruby formatter (conform); gated on .rubocop.yml
+			kotlin = { "ktlint" }, -- fast, config-optional; also the kotlin formatter (conform)
+			java = { "checkstyle" },
+			php = { "phpstan" },
+			sql = { "sqlfluff" }, -- needs a dialect → gated on .sqlfluff
+			proto = { "protolint" },
+			terraform = { "tflint" },
+			nix = { "statix" }, -- anti-patterns; config-optional & fast. (deadnix — dead code — isn't Mason-installable, so it's left out; add it here if you install it via nix/cargo.)
 			-- NOTE: no zsh entry. shellcheck only supports sh/bash/dash/ksh and emits SC1071
 			-- ("ShellCheck only supports sh/bash/dash/ksh scripts") on a zsh file — i.e. a useless
 			-- error diagnostic on every zsh buffer. Nothing reliably lints zsh, so we don't.
+			-- NOTE: no zig/graphql entry — their LSPs (zls, graphql) carry the diagnostics.
 		}
 
-		-- ADAPTIVE: eslint_d errors out (and spams a phantom diagnostic on every buffer) when a
-		-- JS/TS project has no eslint config in its tree. Mirror the SC1071/ruff guards above by
-		-- only linting the eslint family when a config is actually present upward from the buffer.
-		local eslint_fts = {
+		-- SAST (security static analysis): semgrep, run ONLY where a project opts in with a semgrep
+		-- config (see `gated` below). It is not a per-filetype linter in the map above; instead it is
+		-- appended as a candidate for the security-relevant filetypes here, so one entry covers many
+		-- languages without editing each list. Gating is essential: config-less semgrep would
+		-- otherwise fall back to a network `--config auto` fetch on every save.
+		local sast_fts = {
+			python = true,
 			javascript = true,
 			javascriptreact = true,
 			typescript = true,
 			typescriptreact = true,
-			svelte = true,
-			vue = true,
+			go = true,
+			ruby = true,
+			java = true,
+			php = true,
+			c = true,
+			cpp = true,
+			solidity = true,
 		}
-		local eslint_cfgs = {
-			".eslintrc",
-			".eslintrc.js",
-			".eslintrc.cjs",
-			".eslintrc.json",
-			".eslintrc.yaml",
-			".eslintrc.yml",
-			"eslint.config.js",
-			"eslint.config.mjs",
-			"eslint.config.cjs",
-			"eslint.config.ts",
-			"eslint.config.mts",
-			"eslint.config.cts",
+
+		-- CONFIG-GATED linters: each hard-errors, does unwanted whole-repo/network work, or needs a
+		-- dialect when no project config exists — so it runs only when one of its config files is
+		-- found upward from the buffer. (Generalises the old per-linter eslint/stylelint guards.)
+		local gated = {
+			eslint_d = {
+				".eslintrc",
+				".eslintrc.js",
+				".eslintrc.cjs",
+				".eslintrc.json",
+				".eslintrc.yaml",
+				".eslintrc.yml",
+				"eslint.config.js",
+				"eslint.config.mjs",
+				"eslint.config.cjs",
+				"eslint.config.ts",
+				"eslint.config.mts",
+				"eslint.config.cts",
+			},
+			stylelint = {
+				".stylelintrc",
+				".stylelintrc.json",
+				".stylelintrc.yaml",
+				".stylelintrc.yml",
+				".stylelintrc.js",
+				".stylelintrc.cjs",
+				".stylelintrc.mjs",
+				"stylelint.config.js",
+				"stylelint.config.cjs",
+				"stylelint.config.mjs",
+			},
+			rubocop = { ".rubocop.yml", ".rubocop.yaml" },
+			checkstyle = { "checkstyle.xml", ".checkstyle.xml", "google_checks.xml", "sun_checks.xml" },
+			phpstan = { "phpstan.neon", "phpstan.neon.dist", "phpstan.dist.neon" },
+			sqlfluff = { ".sqlfluff", "setup.cfg", "tox.ini", "pyproject.toml" },
+			tflint = { ".tflint.hcl", "tflint.hcl" },
+			semgrep = { ".semgrep.yml", ".semgrep.yaml", "semgrep.yml", "semgrep.yaml" },
 		}
-		local function has_eslint_config()
-			return vim.fs.find(eslint_cfgs, {
-				upward = true,
-				path = vim.fs.dirname(vim.api.nvim_buf_get_name(0)),
-				type = "file",
-			})[1] ~= nil
+		-- Cache config lookups per (linter, buffer-dir): the find walks the tree upward and this
+		-- callback fires on every save/InsertLeave. Keyed by dir so a :cd or different buffer re-checks.
+		local function has_config(linter, dir)
+			return vim.fs.find(gated[linter], { upward = true, path = dir, type = "file" })[1] ~= nil
 		end
 
-		-- Same guard for stylelint: it hard-errors ("No configuration provided") when a project has
-		-- no stylelint config, which would otherwise spam every CSS/SCSS/LESS buffer. Only lint when
-		-- one exists upward from the buffer. (A "stylelint" key in package.json is NOT detected here —
-		-- add a dedicated rc/config file to opt a project in.)
-		local stylelint_fts = { css = true, scss = true, less = true }
-		local stylelint_cfgs = {
-			".stylelintrc",
-			".stylelintrc.json",
-			".stylelintrc.yaml",
-			".stylelintrc.yml",
-			".stylelintrc.js",
-			".stylelintrc.cjs",
-			".stylelintrc.mjs",
-			"stylelint.config.js",
-			"stylelint.config.cjs",
-			"stylelint.config.mjs",
+		-- HEAVY linters that scan the WHOLE package/translation-unit/repo per run are too costly to
+		-- fire on every InsertLeave — async, but invocations pile up while you edit. Restrict them to
+		-- BufWritePost (save-only); the fast per-file linters keep the snappier cadence.
+		local heavy = {
+			golangcilint = true,
+			cpplint = true,
+			checkstyle = true,
+			phpstan = true,
+			sqlfluff = true,
+			tflint = true,
+			semgrep = true,
 		}
-		local function has_stylelint_config()
-			return vim.fs.find(stylelint_cfgs, {
-				upward = true,
-				path = vim.fs.dirname(vim.api.nvim_buf_get_name(0)),
-				type = "file",
-			})[1] ~= nil
-		end
 
-		-- HEAVY linters that scan the WHOLE package/translation-unit per run (golangci-lint on go,
-		-- cpplint on c/cpp) are too costly to fire on every InsertLeave — async, but the invocations
-		-- pile up while you edit. Restrict them to BufWritePost (save-only); the fast per-file linters
-		-- (luacheck, shellcheck, eslint_d, ...) keep the snappier BufWritePost+InsertLeave cadence.
-		local heavy_fts = { go = true, c = true, cpp = true }
 		local grp = vim.api.nvim_create_augroup("NvimLint", { clear = true })
 		vim.api.nvim_create_autocmd({ "BufWritePost", "InsertLeave" }, {
 			group = grp,
 			callback = function(args)
-				local ft = vim.bo.filetype
-				if args.event == "InsertLeave" and heavy_fts[ft] then
-					return -- heavy whole-package linter → save-only, don't run on InsertLeave
+				-- Resolve linters across EVERY component of a (possibly compound) filetype. nvim-lint's
+				-- own try_lint() matches the exact `vim.bo.filetype` string, so a dotted ft like
+				-- `yaml.ansible` or a Helm `yaml.gotmpl` never matched `yaml` and went unlinted — even
+				-- though conform (which splits on ".") still formatted it. Splitting here fixes that.
+				local dir = vim.fs.dirname(vim.api.nvim_buf_get_name(args.buf))
+				local names, seen = {}, {}
+				local function add(name)
+					if not seen[name] then
+						seen[name] = true
+						names[#names + 1] = name
+					end
 				end
-				if eslint_fts[ft] and not has_eslint_config() then
-					return -- no eslint config in tree → skip (avoids eslint_d's hard error)
+				for _, part in ipairs(vim.split(vim.bo[args.buf].filetype, ".", { plain = true })) do
+					for _, l in ipairs(lint.linters_by_ft[part] or {}) do
+						add(l)
+					end
+					if sast_fts[part] then
+						add("semgrep")
+					end
 				end
-				if stylelint_fts[ft] and not has_stylelint_config() then
-					return -- no stylelint config in tree → skip (avoids stylelint's hard error)
+
+				-- Drop linters that shouldn't run this pass: heavy ones on InsertLeave (whole
+				-- package/repo scanners — save-only), and config-gated ones with no project config
+				-- upward from the buffer (avoids hard errors / network / wrong dialect).
+				local run = {}
+				for _, name in ipairs(names) do
+					local skip = (args.event == "InsertLeave" and heavy[name])
+						or (gated[name] and not has_config(name, dir))
+					if not skip then
+						run[#run + 1] = name
+					end
 				end
-				require("lint").try_lint()
+				if #run > 0 then
+					require("lint").try_lint(run)
+				end
 			end,
 		})
 	end,
