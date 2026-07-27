@@ -2,7 +2,7 @@
 # The Core commit this starship.toml was vendored from. dotfiles-doctor reads it.
 source = https://github.com/dotgibson/dotfiles-core.git
 branch = main
-pinned = v4.1.0
-commit = e361d56193dd01321301142e0fde0ec04290755d
-date   = 2026-07-23
-synced = 2026-07-23T22:42:30Z
+pinned = (branch tip)
+commit = dbb2860d1ce162c58b57218983e8227b54902c32
+date   = 2026-07-27
+synced = 2026-07-27T22:23:50Z
