@@ -47,7 +47,6 @@ return {
 			"graphql",
 			"terraform", -- .tf
 			"hcl", -- generic HCL (Packer/Nomad/Vault) — no LSP, but highlighting + terraform fmt
-			"nix",
 		}
 
 		local group = vim.api.nvim_create_augroup("TreeSitterConfig", { clear = true })

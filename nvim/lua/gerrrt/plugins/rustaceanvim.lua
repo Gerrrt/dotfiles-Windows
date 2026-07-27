@@ -75,7 +75,15 @@ end
 
 return {
 	"mrcjkb/rustaceanvim",
-	version = "^6",
+	-- ^8, bumped from ^6: the v6 line calls vim.lsp.get_buffers_by_client_id() (deprecated,
+	-- removed in Nvim 0.13) in server_status.lua — v6.9.7 still has it, so :Lazy would keep
+	-- reverting a lockfile bump back into the warning. The fix ("update function call deprecated
+	-- in nightly") landed in v7.0.0. Pinned to ^8 rather than ^9 deliberately: v9's ONLY breaking
+	-- change is dropping Neovim 0.11 support, and Core vendors to a fleet that may not all be on
+	-- 0.12 yet — v8 keeps the fix AND `neovim >= 0.11`. The v7/v8 breaking changes (ra-multiplex →
+	-- lspmux; drop .vscode/settings.json) don't touch this config (no ra-multiplex; settings come
+	-- from server.default_settings below). Move to ^9 once the whole fleet is on Neovim >= 0.12.
+	version = "^8",
 	ft = "rust",
 	config = config,
 }

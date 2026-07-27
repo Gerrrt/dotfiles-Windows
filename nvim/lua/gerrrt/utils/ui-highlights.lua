@@ -94,6 +94,18 @@ function M.apply(hl, c)
 	hl.WhichKeyBorder = { fg = c.border_highlight, bg = none }
 	hl.WhichKeyTitle = { fg = c.blue, bg = none, bold = true }
 
+
+	-- noice.nvim (plugins/noice-nvim.lua): the floating command-line popup + wildmenu, tinted +
+	-- transparent to match the other floats above. (Only these two views are enabled.)
+	hl.NoiceCmdlinePopup = { bg = none }
+	hl.NoiceCmdlinePopupBorder = { fg = c.border_highlight, bg = none }
+	hl.NoiceCmdlinePopupTitle = { fg = c.blue, bg = none, bold = true }
+	hl.NoiceCmdlineIcon = { fg = c.blue }
+	hl.NoiceCmdlineIconSearch = { fg = c.yellow }
+	hl.NoicePopupmenu = { bg = none }
+	hl.NoicePopupmenuBorder = { fg = c.border_highlight, bg = none }
+	hl.NoicePopupmenuSelected = { bg = c.bg_highlight, fg = c.blue, bold = true }
+
 	-- ── nvim-dap (plugins/nvim-dap.lua): breakpoint + stopped-line gutter signs ──────────────
 	-- Breakpoints are git-red like the renamer border (both mean "this is consequential"), the
 	-- conditional variant is amber to read as "sometimes", and the stopped frame is green with a
