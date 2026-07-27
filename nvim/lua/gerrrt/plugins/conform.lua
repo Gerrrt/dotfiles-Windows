@@ -63,7 +63,6 @@ return {
 			graphql = { "prettierd" }, -- prettier speaks graphql natively
 			terraform = { "terraform_fmt" }, -- `terraform fmt` (needs terraform/tofu on PATH)
 			hcl = { "terraform_fmt" }, -- terraform fmt also formats generic HCL
-			nix = { "alejandra" },
 			-- NOTE: zsh is intentionally absent. shfmt is a POSIX/bash/mksh formatter and does
 			-- NOT understand zsh — it mangles zsh-only syntax (glob qualifiers (#qN), ${(%):-%x},
 			-- $+widgets[name-with-hyphens], &|, ...). There is no safe zsh formatter, so zsh files

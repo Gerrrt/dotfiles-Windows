@@ -65,7 +65,6 @@ local servers = {
 	"buf_ls", -- Protobuf (buf lsp)
 	"graphql", -- GraphQL (attaches only in a project with a graphql config)
 	"terraformls", -- Terraform/HCL
-	"nil_ls", -- Nix
 }
 
 -- Register each server's config. pcall'd per module so one broken or missing server file degrades

@@ -164,11 +164,7 @@ return {
 			return "\u{f0320} " .. vim.fn.fnamemodify(cached, ":t") -- f0320 nf-md-language_python
 		end
 
-		-- Current working directory basename — NvChad shows this on the right; it's the fast
-		-- "which project am I in" cue that a global statusline otherwise loses.
-		local function cwd()
-			return "\u{f07c} " .. vim.fn.fnamemodify(vim.fn.getcwd(), ":t") -- f07c nf-fa-folder_open
-		end
+		-- (N1: cwd removed — tmux shows the project dir when a pane runs nvim)
 
 		require("lualine").setup({
 			options = {
@@ -193,7 +189,7 @@ return {
 			sections = {
 				lualine_a = {
 					-- the outer half-circle cap (e0b6) turns the mode block into NvChad's bubble
-					{ "mode", icon = "\u{e62b}", separator = { left = "\u{e0b6}" } }, -- e62b nf-custom-vim, e0b6
+					{ "mode", separator = { left = "\u{e0b6}" } }, -- e62b nf-custom-vim, e0b6
 					-- Macro recording indicator. showmode=false (options.lua) means the cmdline is the
 					-- only native cue that you're recording; this surfaces it in the block instead.
 					-- Empty string when not recording, so the component collapses and adds no width.
@@ -218,7 +214,7 @@ return {
 				lualine_c = {
 					{
 						"filename",
-						path = 1, -- relative path
+						path = 0, -- N2: filename only (dropbar + tmux cwd carry the path)
 						symbols = {
 							modified = " \u{f111}", -- f111 nf-fa-circle (●-style "unsaved" dot)
 							readonly = " \u{f023}", -- f023 nf-fa-lock
@@ -247,9 +243,7 @@ return {
 					},
 					{ "filetype" },
 				},
-				lualine_y = {
-					{ cwd },
-				},
+				lualine_y = {},
 				lualine_z = {
 					-- Scroll PERCENTAGE through the file — the "how far in am I" cue. lualine's
 					-- `progress` renders Top / Bot / NN% (NvChad itself shows line/col here; this is the

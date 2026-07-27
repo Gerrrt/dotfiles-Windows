@@ -15,6 +15,15 @@ return {
 	config = function()
 		local startify = require("alpha.themes.startify")
 
+		-- N9: palette-aware accents so the greeter colors from tokyonight-storm
+		local ok, c = pcall(function()
+			return require("gerrrt.utils.palette").colors()
+		end)
+		if ok and type(c) == "table" then
+			vim.api.nvim_set_hl(0, "AlphaHeader", { fg = c.blue, bold = true })
+			vim.api.nvim_set_hl(0, "AlphaFooter", { fg = c.comment, italic = true })
+		end
+
 		startify.section.header.val = {
 			"                                            ",
 			"  ███╗   ██╗██╗   ██╗██╗███╗   ███╗         ",
@@ -26,6 +35,8 @@ return {
 			"                                            ",
 		}
 
+		startify.section.header.opts.hl = "AlphaHeader"
+
 		startify.section.top_buttons.val = {
 			startify.button("f", "\u{f002}  Find file", "<cmd>FzfLua files<cr>"), -- f002 search
 			startify.button("g", "\u{f002}  Live grep", "<cmd>FzfLua live_grep<cr>"),
@@ -35,6 +46,15 @@ return {
 			startify.button("l", "\u{f1b3}  Lazy", "<cmd>Lazy<cr>"), -- f1b3 cubes
 			startify.button("q", "\u{f057}  Quit", "<cmd>qa<cr>"), -- f057 times-circle
 		}
+
+		-- N9: quiet footer (plugin count + nvim version)
+		local ok2, lazy = pcall(require, "lazy")
+		local pcount = ok2 and lazy.stats().count or 0
+		local ver = vim.version()
+		startify.section.footer.val = {
+			("\u{f0e7} %d plugins   \u{f419} nvim %d.%d.%d"):format(pcount, ver.major, ver.minor, ver.patch), -- f0e7 bolt, f419 nvim
+		}
+		startify.section.footer.opts = { position = "center", hl = "AlphaFooter" }
 
 		require("alpha").setup(startify.config)
 	end,

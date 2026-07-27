@@ -10,8 +10,10 @@
 -- ================================================================================================
 return {
 	"mfussenegger/nvim-lint",
-	-- `User FilePost` (config/autocmds.lua). Nothing to replay: linting is driven entirely by the
-	-- BufWritePost/InsertLeave autocmds registered below, both of which fire long after load.
+	-- `User FilePost` (config/autocmds.lua). The BufReadPost handler below lints on OPEN, but this
+	-- plugin loads just AFTER the first real file's own BufReadPost — so config() replays that
+	-- initial buffer once at the end (mirroring nvim-treesitter's initial-buffer replay), otherwise
+	-- the very first file you open would show no diagnostics until its first save.
 	event = "User FilePost",
 	config = function()
 		local lint = require("lint")
@@ -98,7 +100,6 @@ return {
 			sql = { "sqlfluff" }, -- needs a dialect → gated on .sqlfluff
 			proto = { "protolint" },
 			terraform = { "tflint" },
-			nix = { "statix" }, -- anti-patterns; config-optional & fast. (deadnix — dead code — isn't Mason-installable, so it's left out; add it here if you install it via nix/cargo.)
 			-- NOTE: no zsh entry. shellcheck only supports sh/bash/dash/ksh and emits SC1071
 			-- ("ShellCheck only supports sh/bash/dash/ksh scripts") on a zsh file — i.e. a useless
 			-- error diagnostic on every zsh buffer. Nothing reliably lints zsh, so we don't.
@@ -181,46 +182,66 @@ return {
 			semgrep = true,
 		}
 
+		-- Resolve and run the eligible linters for `buf` under `event`. `try_lint` targets the
+		-- current buffer, and every caller here runs with `buf` current (the three autocmd events
+		-- fire in the buffer's context; the initial replay passes the current buffer), so no bufnr
+		-- threading is needed.
+		local function run_lint(buf, event)
+			-- Resolve linters across EVERY component of a (possibly compound) filetype. nvim-lint's
+			-- own try_lint() matches the exact `vim.bo.filetype` string, so a dotted ft like
+			-- `yaml.ansible` or a Helm `yaml.gotmpl` never matched `yaml` and went unlinted — even
+			-- though conform (which splits on ".") still formatted it. Splitting here fixes that.
+			local dir = vim.fs.dirname(vim.api.nvim_buf_get_name(buf))
+			local names, seen = {}, {}
+			local function add(name)
+				if not seen[name] then
+					seen[name] = true
+					names[#names + 1] = name
+				end
+			end
+			for _, part in ipairs(vim.split(vim.bo[buf].filetype, ".", { plain = true })) do
+				for _, l in ipairs(lint.linters_by_ft[part] or {}) do
+					add(l)
+				end
+				if sast_fts[part] then
+					add("semgrep")
+				end
+			end
+
+			-- Drop linters that shouldn't run this pass: heavy whole-package/repo scanners run ONLY
+			-- on save (BufWritePost) — too costly to fire on open or every InsertLeave, where the
+			-- async invocations pile up; and config-gated ones are skipped without a project config
+			-- upward from the buffer (avoids hard errors / network / wrong dialect).
+			local run = {}
+			for _, name in ipairs(names) do
+				local skip = (event ~= "BufWritePost" and heavy[name])
+					or (gated[name] and not has_config(name, dir))
+				if not skip then
+					run[#run + 1] = name
+				end
+			end
+			if #run > 0 then
+				require("lint").try_lint(run)
+			end
+		end
+
+		-- BufReadPost lints on OPEN (diagnostics show without first saving or toggling insert mode);
+		-- BufWritePost re-lints on save (and is the ONLY event the heavy linters run on); InsertLeave
+		-- keeps the snappy in-edit refresh for the fast per-file linters.
 		local grp = vim.api.nvim_create_augroup("NvimLint", { clear = true })
-		vim.api.nvim_create_autocmd({ "BufWritePost", "InsertLeave" }, {
+		vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost", "InsertLeave" }, {
 			group = grp,
 			callback = function(args)
-				-- Resolve linters across EVERY component of a (possibly compound) filetype. nvim-lint's
-				-- own try_lint() matches the exact `vim.bo.filetype` string, so a dotted ft like
-				-- `yaml.ansible` or a Helm `yaml.gotmpl` never matched `yaml` and went unlinted — even
-				-- though conform (which splits on ".") still formatted it. Splitting here fixes that.
-				local dir = vim.fs.dirname(vim.api.nvim_buf_get_name(args.buf))
-				local names, seen = {}, {}
-				local function add(name)
-					if not seen[name] then
-						seen[name] = true
-						names[#names + 1] = name
-					end
-				end
-				for _, part in ipairs(vim.split(vim.bo[args.buf].filetype, ".", { plain = true })) do
-					for _, l in ipairs(lint.linters_by_ft[part] or {}) do
-						add(l)
-					end
-					if sast_fts[part] then
-						add("semgrep")
-					end
-				end
-
-				-- Drop linters that shouldn't run this pass: heavy ones on InsertLeave (whole
-				-- package/repo scanners — save-only), and config-gated ones with no project config
-				-- upward from the buffer (avoids hard errors / network / wrong dialect).
-				local run = {}
-				for _, name in ipairs(names) do
-					local skip = (args.event == "InsertLeave" and heavy[name])
-						or (gated[name] and not has_config(name, dir))
-					if not skip then
-						run[#run + 1] = name
-					end
-				end
-				if #run > 0 then
-					require("lint").try_lint(run)
-				end
+				run_lint(args.buf, args.event)
 			end,
 		})
+
+		-- Replay for the buffer that triggered this load: its BufReadPost already fired before the
+		-- plugin loaded (User FilePost lands just after), so without this the first file you open
+		-- would stay un-linted until its first save. Current buffer == that file at User FilePost.
+		local cur = vim.api.nvim_get_current_buf()
+		if vim.api.nvim_buf_is_loaded(cur) and vim.api.nvim_buf_get_name(cur) ~= "" then
+			run_lint(cur, "BufReadPost")
+		end
 	end,
 }

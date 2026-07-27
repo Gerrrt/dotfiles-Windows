@@ -112,7 +112,7 @@ return {
 		options = {
 			mode = "buffers", -- one entry per buffer (set to "tabs" to mirror vim tabpages instead)
 			themable = true,
-			numbers = "none", -- jump-by-number is harpoon's job; keep the line uncluttered
+			numbers = "ordinal", -- jump-by-number is harpoon's job; keep the line uncluttered
 			indicator = { style = "underline" }, -- subtle; reads cleanly with your transparency
 			separator_style = "thin", -- flat rectangular tabs like NvChad's tabufline (no slant)
 			modified_icon = "\u{f111}", -- f111 nf-fa-circle (●) — same unsaved dot as lualine

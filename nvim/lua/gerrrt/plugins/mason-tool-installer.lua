@@ -71,7 +71,7 @@ return {
 				"markdownlint-cli2", -- markdown lint (mirrors the repo's markdown gate)
 				"yamllint", -- yaml lint
 				-- ── added languages: Ruby / Java / Kotlin / PHP / Zig / SQL / Protobuf / GraphQL /
-				--    Terraform / Nix. Grouped here (rather than split across the sections above) so
+				--    Terraform. Grouped here (rather than split across the sections above) so
 				--    the whole new surface is legible in one place. Servers are enabled in
 				--    servers/init.lua; formatters live in conform.lua; linters (all gated) in
 				--    nvim-lint.lua; parsers in nvim-treesitter.lua.
@@ -95,21 +95,18 @@ return {
 				"buf", -- Protobuf: buf CLI provides the LSP (buf lsp) AND the formatter (buf format)
 				"graphql-language-service-cli",
 				"terraform-ls",
-				"nil", -- Nix LSP
 				-- ── formatters (conform) ──
 				"rubocop", -- Ruby: formats AND lints (also the nvim-lint entry)
 				"google-java-format",
 				"ktlint", -- Kotlin: formats AND lints
 				"php-cs-fixer",
 				"sql-formatter",
-				"alejandra", -- Nix formatter
 				-- ── linters (nvim-lint, gated) ──
 				"checkstyle", -- Java
 				"phpstan", -- PHP
 				"sqlfluff", -- SQL (needs a dialect → gated on .sqlfluff)
 				"protolint", -- Protobuf
 				"tflint", -- Terraform
-				"statix", -- Nix anti-patterns (deadnix, its dead-code companion, is not in the Mason registry — install via nix/cargo if wanted)
 				-- ── SAST (nvim-lint, gated on a project semgrep config) ──
 				"semgrep",
 			},
