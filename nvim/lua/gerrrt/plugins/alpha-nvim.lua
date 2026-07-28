@@ -47,10 +47,17 @@ return {
 			startify.button("q", "\u{f057}  Quit", "<cmd>qa<cr>"), -- f057 times-circle
 		}
 
-		-- N9: quiet footer (plugin count + nvim version)
+		-- N9: quiet footer (plugin count + nvim version).
+		-- startify's `footer` is a `group` whose `val` must be element tables (each with a
+		-- `.type`), not raw strings — feeding it strings makes alpha call layout_element[nil]
+		-- and crash. Convert it to a `text` element by MUTATING the existing footer table:
+		-- `startify.config.layout` captured this exact table by reference at module-load time,
+		-- so reassigning `startify.section.footer` to a fresh table would leave the layout
+		-- pointing at the original (empty) group and silently drop the footer.
 		local ok2, lazy = pcall(require, "lazy")
 		local pcount = ok2 and lazy.stats().count or 0
 		local ver = vim.version()
+		startify.section.footer.type = "text"
 		startify.section.footer.val = {
 			("\u{f0e7} %d plugins   \u{f419} nvim %d.%d.%d"):format(pcount, ver.major, ver.minor, ver.patch), -- f0e7 bolt, f419 nvim
 		}
