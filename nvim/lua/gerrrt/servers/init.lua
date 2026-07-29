@@ -67,6 +67,12 @@ local servers = {
 	"terraformls", -- Terraform/HCL
 }
 
+-- Which servers/<name>.lua LOCAL modules actually loaded. Tracked explicitly because
+-- `vim.lsp.config[name]` is NOT a reliable "did our override load" signal: once nvim-lspconfig is
+-- on the runtimepath it resolves an UPSTREAM default table for a name even when our local module
+-- errored — so a failed leaf would masquerade as configured. status() consults this instead.
+local registered = {}
+
 -- Register each server's config. pcall'd per module so one broken or missing server file degrades
 -- to "that one server is unconfigured" instead of taking the whole LSP stack — and the editor —
 -- down with it.
@@ -74,6 +80,7 @@ for _, name in ipairs(servers) do
 	local okm, cfg = pcall(require, "gerrrt.servers." .. name)
 	if okm and type(cfg) == "table" then
 		vim.lsp.config(name, cfg)
+		registered[name] = true
 	else
 		vim.schedule(function()
 			vim.notify(
@@ -153,6 +160,13 @@ end
 
 local M = {}
 
+-- Names we have actually called vim.lsp.enable() on. This is the AUTHORITATIVE "is it wired to
+-- spawn" state, distinct from "binary is present": a binary that appears AFTER this pass (e.g.
+-- `uv tool install ruff`, which doesn't fire the Mason re-enable hook) is available but NOT enabled
+-- until the next enable pass or a restart. Accumulated (enable is idempotent) so status() can tell
+-- the two apart instead of equating them.
+local enabled_set = {}
+
 -- Enable every WANTED server whose binary is currently present; return the list still missing.
 -- Safe to call REPEATEDLY: vim.lsp.enable is idempotent and, on 0.11+, attaches a newly-enabled
 -- server to already-open matching buffers. That is what lets the post-install hook in
@@ -170,7 +184,36 @@ function M.enable_available()
 		end
 	end
 	vim.lsp.enable(to_enable)
+	for _, name in ipairs(to_enable) do
+		enabled_set[name] = true
+	end
 	return missing
+end
+
+-- Per-server readiness snapshot for `:checkhealth gerrrt` (see gerrrt/health.lua). Reuses the
+-- WANTED `servers` list and the SAME `binary_available()` decision the enable pass uses, so the
+-- health report can never disagree with what actually got enabled — no second server list to drift.
+-- Reports FOUR independent facts per server, deliberately kept separate so the report is honest:
+--   • registered : our servers/<name>.lua override loaded (tracked above — NOT inferred from
+--                  vim.lsp.config[name], which also resolves upstream lspconfig defaults)
+--   • enabled    : we actually called vim.lsp.enable() on it (from enabled_set — the real "wired
+--                  to spawn" state, which "binary present" alone does not imply)
+--   • available  : its binary is on PATH (or a project-local node_modules/.bin)
+--   • clients    : clients attached RIGHT NOW (a point-in-time snapshot; servers attach per-filetype)
+-- This function is READ-ONLY (no config registration, no enable) so a health check that calls it
+-- cannot mutate the session — see the package.loaded guard in gerrrt/health.lua.
+function M.status()
+	local out = {}
+	for _, name in ipairs(servers) do
+		out[#out + 1] = {
+			name = name,
+			registered = registered[name] == true,
+			enabled = enabled_set[name] == true,
+			available = binary_available(name),
+			clients = #vim.lsp.get_clients({ name = name }),
+		}
+	end
+	return out
 end
 
 -- Initial pass at load. Surface (once) which servers were skipped so a missing binary is
