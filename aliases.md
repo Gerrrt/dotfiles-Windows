@@ -58,6 +58,7 @@ still work. Kept aligned by dotfiles-core's `PARITY.md` + `parity-check.sh`.
 | `https` | `xh --https` | xh |
 | `gmd` | `glow [--pager]` | glow |
 | `dns` | `doggo` | doggo |
+| `web` | terminal web browser (`w3m`→`lynx`→`links`→`elinks`) | lynx (or any text browser) |
 | `du` | `dust` | dust |
 | `df` | `duf` | duf |
 | `pss` | `procs` | procs |

@@ -35,6 +35,8 @@ repo for the offensive catalog.
 | doggo | dig         | `doggo`               | `dns`                                         | modern dig (DNS recon)                                                                                                                                                               |
 | sd    | sed         | `sd`                  | —                                             | intuitive find/replace; own verb (never shadows sed)                                                                                                                                 |
 | gron  | —           | `gron`                | —                                             | greppable JSON                                                                                                                                                                       |
+| jnv   | —           | `jnv`                 | —                                             | interactive JSON explorer (jq-filter editor + collapsible viewer); own verb — `jnv file.json` or pipe in. The "explore" to jq's "transform" and gron's "grep".                       |
+| lynx  | —           | `lynx`                | `web`                                         | terminal web browser. `web` prefers `w3m` (no scoop manifest) then `lynx`; GUI host, so `$BROWSER` is not exported (unlike Core's headless path).                                    |
 | gum   | —           | `gum`                 | —                                             | shell-script UI widgets (Charm)                                                                                                                                                      |
 | tv    | —           | `television` (extras) | `tvim` `ttext` `tcd` `trepo` `tbranch` `tenv` | television fuzzy finder; wrappers in `core/25-television.ps1`. NOT given Ctrl+R (atuin owns it) — named verbs only. Channel availability (`dirs` etc.) depends on tv's cable config. |
 
@@ -54,14 +56,17 @@ duplicate of an existing tool:
 | trippy (`trip`)     | mtr / traceroute    | `trippy`    | Traceroute + ping TUI; the hop/path analysis `gping`/`doggo` don't do.                                  |
 | ast-grep (`sg`)     | —                   | `ast-grep`  | Structural (AST-aware) code search/replace; complements `rg` + `sd` for real refactors.                 |
 
-> **Lockfile:** `packages.lock.json` was reconciled with these five apps from the
-> ScoopInstaller **Main** bucket manifests (the same source `Update-PackageLock.ps1`
-> queries) so the drift gate stays green. Re-run `packages/Update-PackageLock.ps1` on a
-> Windows host to confirm against your actually-installed versions.
+> **Lockfile:** `packages.lock.json` was reconciled with these five apps — and the
+> later `jnv` / `lynx` — from the ScoopInstaller **Main** bucket manifests (the same
+> source `Update-PackageLock.ps1` queries) so the drift gate stays green. Re-run
+> `packages/Update-PackageLock.ps1` on a Windows host to confirm against your
+> actually-installed versions.
 >
-> `jless` (interactive JSON/YAML viewer) was considered and **left out** — it isn't in
-> the scoop Main/Extras buckets and its Windows support is weak; `gron`/`jq` cover the
-> need. Install via `cargo install jless` if you want it.
+> The interactive JSON-explorer gap is now filled by **`jnv`** (scoop Main; the same tool
+> Core detects as `HAVE_JNV`) — a jq-filter editor with a collapsible viewer, sitting between
+> `jq` (transform) and `gron` (grep). `jless` was the earlier candidate and stays **left
+> out** — it isn't in the scoop Main/Extras buckets and its Windows support is weak; install
+> via `cargo install jless` if you specifically want it.
 
 ### From the awesome-windows sweep
 

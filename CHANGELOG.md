@@ -6,6 +6,21 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Added
+
+- **`jnv` — interactive JSON explorer (fleet parity with Core's `HAVE_JNV`).** Added to
+  `packages/scoopfile.json` (scoop Main). A jq-filter editor with a collapsible viewer that
+  fills the "explore an unfamiliar JSON response" gap between `jq` (transform) and `gron`
+  (grep). Its own command with no alias — `jnv file.json` or pipe into it — like `jq`/`yq`/
+  `gron`. This also retires the old `jless`-was-left-out caveat in `docs/TOOLS.md`: `jnv` is
+  the packaged interactive explorer now.
+- **`web` — terminal web browser verb (parity with Core's `web`).** Added a guarded `web`
+  function in `core/00-aliases.ps1` that resolves `w3m`→`lynx`→`links`→`elinks` and runs the
+  first present (skipped entirely when none is installed, matching Core). **`w3m` has no scoop
+  manifest, so the host packages `lynx`** (Core's own next fallback; scoop Main) in
+  `scoopfile.json`. Unlike Core's headless path, `$BROWSER` is never exported — the Windows
+  host is GUI-first, so `web` stays an explicit opt-in verb.
+
 ### Changed
 
 - **Re-vendored `nvim/` from Core** (was `v4.4.0-3`, now current). Brings the Core

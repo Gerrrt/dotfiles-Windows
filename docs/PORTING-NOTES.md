@@ -37,6 +37,12 @@ Linux distros under WSL2. Here's the row, translated.
   password/secret/token/`op …` lines out of the saved history file.
 - **2026 CLI tools + aliases** — xh (`http`), glow (`md`), doggo (`dns`), plus
   sd/gron/gum as their own verbs. scoopfile + guarded aliases.
+- **jnv + `web` (mid-2026 parity)** — `jnv` (scoop Main; the tool Core detects as
+  `HAVE_JNV`) is the interactive JSON explorer, an own-command verb like jq/gron
+  (`jnv file.json` or pipe in). Core's terminal-browser `web` verb is ported too:
+  **w3m has no scoop manifest, so the host uses `lynx`** (Core's own next fallback,
+  scoop Main). `web` resolves `w3m`→`lynx`→`links`→`elinks` and is skipped when none
+  is installed; unlike Core's headless path it never exports `$BROWSER` (GUI host).
 - **starship palette** — realigned to **tokyonight-storm**, then revised so the
   bright accents are segment _text_ over two dark surface fills instead of
   glaring background bands (was a near-white-on-bright eye-strain prompt).
