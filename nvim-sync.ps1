@@ -144,10 +144,6 @@ try {
     Write-Host 'nvim/ synced from Core. Review and commit:' -ForegroundColor Green
     Write-Host "  git -C `"$RepoRoot`" diff --stat nvim/" -ForegroundColor DarkGray
     Write-Host "  git -C `"$RepoRoot`" add nvim/ ; git -C `"$RepoRoot`" commit -m 'sync nvim from core'" -ForegroundColor DarkGray
-    Write-Host ''
-    Write-Host 'Known Windows wart: Core keymaps.lua <leader>rc opens ~/.config/nvim/init.lua,' -ForegroundColor DarkYellow
-    Write-Host 'but Windows nvim reads %LOCALAPPDATA%\nvim. Harmless; that one keymap points' -ForegroundColor DarkYellow
-    Write-Host 'at the wrong path on the host. Left verbatim to keep the sync a clean copy.' -ForegroundColor DarkYellow
 }
 finally {
     if ($tempClone -and (Test-Path $tempClone)) {

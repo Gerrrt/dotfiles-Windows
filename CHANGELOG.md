@@ -6,6 +6,34 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **Re-vendored `nvim/` from Core** (was `v4.4.0-3`, now current). Brings the Core
+  changes that had not yet reached the host: the `regex` Tree-sitter parser (silences
+  `:checkhealth noice`'s "regex parser is not installed" cmdline-highlighting warning),
+  the new `:checkhealth gerrrt` **LSP / formatter / linter** readiness sections, and the
+  `servers/init.lua` read-only `status()` export those sections consume. `nvim/.core-ref`
+  updated to the synced commit. (`nvim/`, via `nvim-sync.ps1`)
+
+### Fixed
+
+- **`:checkhealth gerrrt` no longer false-warns about the clipboard on the host.** It read
+  "Core's cross-OS clipboard scripts are not on PATH (clip: found, clip-paste: missing)" —
+  misleading, since `clip` only resolved to Windows' built-in `clip.exe` and Neovim's own
+  `win32yank`/`clip.exe` provider is the correct backend here, not a degraded fallback. Fixed
+  upstream in Core (`health.lua` now detects native Windows via `has("win32")`) and pulled in
+  with the nvim re-vendor above.
+
+### Docs
+
+- **Documented the psmux `:checkhealth` tmux cosmetic wart** in `docs/PORTING-NOTES.md`:
+  psmux has no `show-option` verb, so Neovim's built-in `vim.health` tmux probe shows ❌
+  ERRORs and a false "true color could not be detected" ⚠️ — cosmetic only (psmux renders
+  24-bit colour natively; nothing functional is affected), and not shimmed on purpose.
+- Refreshed the stale "re-vendor `nvim/`" manual step (the full tree is now vendored via
+  `nvim-sync.ps1`, and the old `<leader>rc` keymap wart is fixed upstream), and dropped the
+  now-inaccurate "Known Windows wart" banner `nvim-sync.ps1` printed after each sync.
+
 ## [v1.4.0] - 2026-07-23
 
 ### Changed
