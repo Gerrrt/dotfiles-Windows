@@ -36,6 +36,7 @@ return {
 			"diff", -- diffview.nvim + git diff buffers
 			"gitcommit", -- commit message buffers (you write these via fugitive/lazygit)
 			"vimdoc", -- :help and plugin docs
+			"regex", -- noice.nvim floating cmdline: highlights the regex in :s/… and searches
 			-- ── added-language parsers (LSP + formatter + linter wired in the other manifests) ──
 			"ruby",
 			"java",
