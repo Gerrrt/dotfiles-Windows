@@ -9,10 +9,11 @@ so entries are grouped by theme rather than strict semver releases.
 _**Core → Windows parity pass (2026-07).** A focused sweep to close the drift that had
 built up between recent `dotfiles-core` / `dotfiles-MacBook` work and the Windows host,
 kicked off by a host `:checkhealth` dump. In short: the stale `nvim/` mirror was
-re-vendored from Core (bringing the `regex` Tree-sitter parser and the new `:checkhealth
-gerrrt` LSP/formatter/linter readiness sections); the native-Windows clipboard
-false-warning was fixed upstream in Core and pulled in; the psmux `:checkhealth` tmux
-noise was documented as the cosmetic wart it is; and the two mid-2026 Core CLI tools the
+re-vendored from Core (bringing the `regex` Tree-sitter parser and the new
+`:checkhealth gerrrt` LSP/formatter/linter readiness sections); the native-Windows
+clipboard false-warning was fixed upstream in Core and pulled in; the psmux
+`:checkhealth` tmux noise was documented as the cosmetic wart it is; and the two
+mid-2026 Core CLI tools the
 host still lacked were wired up — `jnv` (interactive JSON explorer) and a `web`
 terminal-browser verb (via `lynx`, since `w3m` has no scoop manifest). Per-change detail
 below._
