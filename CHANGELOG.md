@@ -19,10 +19,11 @@ so entries are grouped by theme rather than strict semver releases.
 
 - **`:checkhealth gerrrt` no longer false-warns about the clipboard on the host.** It read
   "Core's cross-OS clipboard scripts are not on PATH (clip: found, clip-paste: missing)" —
-  misleading, since `clip` only resolved to Windows' built-in `clip.exe` and Neovim's own
-  `win32yank`/`clip.exe` provider is the correct backend here, not a degraded fallback. Fixed
-  upstream in Core (`health.lua` now detects native Windows via `has("win32")`) and pulled in
-  with the nvim re-vendor above.
+  misleading, since `clip` only resolved to Windows' built-in `clip.exe` and the Unix/WSL
+  `clip`/`clip-paste` ladder does not apply on the host: `config/clipboard.lua` wires the
+  `clip-windows` provider (`clip.exe` copy + PowerShell paste) instead. Fixed upstream in Core
+  (`health.lua` now detects native Windows via `has("win32")` and defers to `:checkhealth
+  vim.provider` for the live backend) and pulled in with the nvim re-vendor above.
 
 ### Docs
 

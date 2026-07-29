@@ -3,6 +3,6 @@
 source = https://github.com/dotgibson/dotfiles-core.git
 branch = claude/dotfiles-platform-parity-e63nxl
 pinned = (branch tip)
-commit = f7342ff4ea49be6579f4098b62f1dfaa66e6c5c4
+commit = e4dbbda0c417187986ea29aaf71cc866658a197d
 date   = 2026-07-29
 synced = 2026-07-29T00:00:00Z
