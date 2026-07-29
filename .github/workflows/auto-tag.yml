@@ -35,8 +35,8 @@ jobs:
     # Fork guard (G9): only the canonical owner tags/releases. A fork pushing to its own
     # main must not attempt to cut a tag or a GitHub Release.
     if: github.repository_owner == 'dotgibson'
-    # Pinned to a full commit SHA, not the mutable @v3 tag, so a moved tag can't
+    # Pinned to a full commit SHA, not the mutable @v4 tag, so a moved tag can't
     # silently change what runs here — the same supply-chain discipline ci.yml applies
     # to its third-party actions. Bump the SHA (and the # v-comment) when intentionally
     # adopting a new auto-tag-call release.
-    uses: dotgibson/dotfiles-core/.github/workflows/auto-tag-call.yml@e9cf907f5849dfae2f3313d840fcbafb3772b83a # v3
+    uses: dotgibson/dotfiles-core/.github/workflows/auto-tag-call.yml@bea73f6080b04704ffd206bd935073e38781aec9 # v4.5.0
