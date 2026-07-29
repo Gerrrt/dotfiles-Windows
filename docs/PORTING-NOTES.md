@@ -92,6 +92,29 @@ carry to the host: the `vim-tmux-navigator` smart-pane script (Unix-shell
 `is_vim` detection) and any `clip`/xclip copy commands — host clipboard goes
 through `set-clipboard on` (OSC52) instead.
 
+### Known cosmetic wart: `:checkhealth` tmux under psmux
+
+psmux speaks tmux's command _language_ but not its whole surface — notably it has
+no `show-option`/`show-options` verb. Neovim's built-in `:checkhealth` (the
+`vim.health` "tmux" section) shells out to the real tmux to read settings, e.g.
+`tmux show-option -qvg escape-time` / `focus-events` / `default-terminal`. Under
+psmux (its scoop-installed `tmux` shim) those queries return
+`psmux: unknown command: show-option`, so the section shows three ❌ ERRORs plus a
+"True color support could not be detected" ⚠️. **This is purely cosmetic:**
+
+- Nothing is broken. Those health probes only _read_ optional tmux settings; the
+  session, panes, keybinds, and copy mode all work.
+- The truecolor warning is a false negative — psmux renders 24-bit colour
+  natively (see the "Colours & Terminal" note in `psmux/psmux.conf`, which is
+  why it drops `terminal-features`/`terminal-overrides`), so `termguicolors`
+  works despite the probe being unable to confirm it.
+
+Not fixed in-repo on purpose: the `tmux` command is psmux's own binary (owned by
+its scoop bucket, not this repo), and interposing our own `tmux` shim on PATH to
+answer `show-option` would risk psmux's normal operation for a health-check
+cosmetic. If psmux gains a `show-option` no-op upstream, the section goes green on
+its own.
+
 ## Things that DON'T port (by design)
 
 - **Offensive layer** — unique to the Kali station, same as everywhere else in
@@ -104,16 +127,14 @@ through `set-clipboard on` (OSC52) instead.
 
 ## Remaining manual steps
 
-- **Re-vendor `nvim/` from Core.** The committed `nvim/` here is a thin shell;
-  the real tree (lua/gerrrt/{config,plugins,servers,utils}) is authored in Core
-  and vendored. Pull the current Core nvim tree in (subtree pull or a straight
-  copy of `core/nvim/` → this repo's `nvim/`). `.luacheckrc` has been synced to
-  Core's current version; the rest of the tree should follow the same way the
-  Linux repos vendor it. **Carry the U16 fix upstream:** `config/keymaps.lua`'s
-  `<leader>rc` now opens `vim.fn.stdpath("config")` instead of a hardcoded
-  `~/.config/nvim` (which pointed at a nonexistent path on Windows). The change
-  is OS-portable, so push it into Core before re-vendoring — otherwise the
-  `robocopy /MIR` sync overwrites `keymaps.lua` and reintroduces the wart.
+- **Keep `nvim/` current with Core.** The full tree
+  (`lua/gerrrt/{config,plugins,servers,utils}`) is authored in Core and vendored
+  here via `nvim-sync.ps1` (a `robocopy /MIR` mirror, no subtree — see the script
+  header). Run it after a Core release and commit the diff; `nvim/.core-ref`
+  records which Core commit the tree came from. The old U16 keymap wart is gone —
+  `config/keymaps.lua`'s `<leader>rc` resolves the config dir at runtime with
+  `vim.fn.stdpath("config")` upstream in Core, so it opens the right `init.lua`
+  on every platform (`%LOCALAPPDATA%\nvim` on the host) and survives the mirror.
 - **Align `psmux/psmux.conf` with Core's tmux config.** The host config is a
   standalone, portable starter that already remaps the prefix to `C-a`
   (`psmux.reset.conf`). When convenient, reconcile the remaining keybinds with
