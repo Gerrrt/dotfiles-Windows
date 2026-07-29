@@ -195,9 +195,11 @@ if (Test-Cmd doggo) { function dns   { doggo @args } }                          
 # "explore" verb to jq's "transform" and gron's "grep").
 # terminal web browser — parity with Core's `web` verb. w3m has no scoop manifest, but lynx
 # does (packaged in scoopfile.json); prefer whatever text browser is present, same resolution
-# order as Core's 00-tools.zsh. Baked as a literal per branch (a captured $var would be out of
-# scope by call time). GUI-first host, so — unlike Core's headless path — we never export
-# $BROWSER; `web` stays an opt-in verb and is skipped entirely when no text browser is installed.
+# order as Core's 00-tools.zsh. Each branch bakes the binary as a literal (not
+# `function web { & $bin @args }`): that keeps the function self-contained instead of depending
+# on a lingering script-scope $bin at call time — the same literal idiom as http/dns above.
+# GUI-first host, so — unlike Core's headless path — we never export $BROWSER; `web` stays an
+# opt-in verb and is skipped entirely when no text browser is installed.
 if     (Test-Cmd w3m)    { function web { w3m @args } }
 elseif (Test-Cmd lynx)   { function web { lynx @args } }
 elseif (Test-Cmd links)  { function web { links @args } }
