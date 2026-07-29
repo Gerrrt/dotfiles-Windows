@@ -3,7 +3,7 @@
 # ============================================================================
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
-# provides: Test-Cmd, Get-DotCmdEntry, Export-DotCmdCache, Test-CmdRuns, ls, l, ll, la, lt, llt, cat, catp, grep, http, https, gmd, dns, du, pss, watch, hex, loc, df, fm, y, top, htop, tree, ping, cdi, notes, g, gs, gst, gss, gsb, ga, gaa, gap, gc, gcm, gca, gcam, gc!, gcn!, gb, gba, gbd, gbm, gco, gcb, gcom, gsw, gswc, gswm, gd, gds, gdw, glog, gloga, glol, glola, gf, gfa, gl, gpr, gp, gpu, gpf, gpf!, gsta, gstaa, gstp, gstl, gstd, grb, grbi, grbm, grbc, grba, grh, grhh, grs, grss, gr, grv, gm, gma, gdft, jjs, jjl, jjd, lg, .., ..., ...., ~, mkcd, which, reload, dotfiles
+# provides: Test-Cmd, Get-DotCmdEntry, Export-DotCmdCache, Test-CmdRuns, ls, l, ll, la, lt, llt, cat, catp, grep, http, https, gmd, dns, web, du, pss, watch, hex, loc, df, fm, y, top, htop, tree, ping, cdi, notes, g, gs, gst, gss, gsb, ga, gaa, gap, gc, gcm, gca, gcam, gc!, gcn!, gb, gba, gbd, gbm, gco, gcb, gcom, gsw, gswc, gswm, gd, gds, gdw, glog, gloga, glol, glola, gf, gfa, gl, gpr, gp, gpu, gpf, gpf!, gsta, gstaa, gstp, gstl, gstd, grb, grbi, grbm, grbc, grba, grh, grhh, grs, grss, gr, grv, gm, gma, gdft, jjs, jjl, jjd, lg, .., ..., ...., ~, mkcd, which, reload, dotfiles
 # requires: Write-DotHost
 # PowerShell has built-in aliases (ls, cat, cp...) that point at cmdlets.
 # We remove the ones we want to override, then define functions that shadow
@@ -190,7 +190,20 @@ if (Test-Cmd xh)    { function http  { xh @args }; function https { xh --https @
 # otherwise makes `glow --pager` abort with `exec: "less" not found`.
 if (Test-Cmd glow)  { function gmd { if ($env:PAGER -or (Test-CmdRuns less)) { glow --pager @args } else { glow @args } } }
 if (Test-Cmd doggo) { function dns   { doggo @args } }                                     # modern dig (DNS recon)
-# gron / sd are their own commands (no alias — never shadow sed/jq usage in scripts).
+# gron / sd / jq / yq / jnv are their own commands (no alias — never shadow sed/jq usage in
+# scripts). jnv is the interactive JSON explorer — run `jnv file.json` or pipe into it (the
+# "explore" verb to jq's "transform" and gron's "grep").
+# terminal web browser — parity with Core's `web` verb. w3m has no scoop manifest, but lynx
+# does (packaged in scoopfile.json); prefer whatever text browser is present, same resolution
+# order as Core's 00-tools.zsh. Each branch bakes the binary as a literal (not
+# `function web { & $bin @args }`): that keeps the function self-contained instead of depending
+# on a lingering script-scope $bin at call time — the same literal idiom as http/dns above.
+# GUI-first host, so — unlike Core's headless path — we never export $BROWSER; `web` stays an
+# opt-in verb and is skipped entirely when no text browser is installed.
+if     (Test-Cmd w3m)    { function web { w3m @args } }
+elseif (Test-Cmd lynx)   { function web { lynx @args } }
+elseif (Test-Cmd links)  { function web { links @args } }
+elseif (Test-Cmd elinks) { function web { elinks @args } }
 
 # --- 2026 batch 2: system inspection & utilities (all guarded) ----------------
 # dust: visual disk-usage tree (du replacement).
