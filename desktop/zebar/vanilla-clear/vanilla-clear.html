@@ -340,6 +340,15 @@
               )}
 
               <Pomodoro />
+
+              {/* Weather — moved into the left island (stable-width, non-urgent; kept
+                  clear of the volatile right-island network figures + centered clock). */}
+              {output.weather && (
+                <div className="weather">
+                  {getWeatherIcon(output.weather)}
+                  {Math.round(output.weather.celsiusTemp)}°C
+                </div>
+              )}
             </div>
 
             <div className="center">
@@ -367,6 +376,9 @@
                 </div>
               )}
 
+              {/* separator: I/O ↔ load */}
+              <span className="sep">│</span>
+
               {/* Free space on C:, colored when it runs low. */}
               {(() => {
                 const d = diskInfo(output.disk);
@@ -392,6 +404,9 @@
                 </div>
               )}
 
+              {/* separator: load ↔ power/ambient */}
+              <span className="sep">│</span>
+
               {output.battery && (
                 <div className={`battery ${batteryClass(output.battery)}`}>
                   {/* Show icon for whether battery is charging. */}
@@ -400,13 +415,6 @@
                   )}
                   {getBatteryIcon(output.battery)}
                   {Math.round(output.battery.chargePercent)}%
-                </div>
-              )}
-
-              {output.weather && (
-                <div className="weather">
-                  {getWeatherIcon(output.weather)}
-                  {Math.round(output.weather.celsiusTemp)}°C
                 </div>
               )}
 

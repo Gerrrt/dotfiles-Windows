@@ -14,6 +14,7 @@
   --tn-yellow: #e0af68;
   --tn-cyan: #7dcfff;
   --tn-purple: #bb9af7;
+  --tn-orange: #ff9e64;
 }
 
 /* ── Tuning knobs ────────────────────────────────────────────────────────────
@@ -27,9 +28,12 @@
   --bar-font-size: 16px; /* body text/glyph size (sketchybar --default …:17.0) */
   --bar-height: 36px; /* painted pill height (sketchybar --bar height=36) */
   --bar-gap: 8px; /* float gap top/sides (sketchybar margin=8 / y_offset) */
-  --bar-radius: 9px; /* pill corner radius (sketchybar corner_radius=9) */
-  --bar-pad-x: 12px; /* pill inner horizontal padding */
+  --bar-radius: 9px; /* island corner radius (sketchybar corner_radius=9) */
   --item-gap: 20px; /* space between right-group items */
+  /* Islands: transparent bar + 3 bordered translucent panels (PARITY.md geometry) */
+  --island-height: 28px; /* inset panel height within the bar (sketchybar background.height=28) */
+  --island-pad-x: 10px; /* inner horizontal padding of each island */
+  --island-border-w: 2px; /* rim thickness (sketchybar border_width=2) */
 }
 
 body {
@@ -53,32 +57,48 @@ body,
 
 /* Floating rounded bar: an inset translucent pill sized by the tuning knobs above
    (matches sketchybar's margin/corner_radius). GlazeWM's gaps.outer.top clears it. */
+/* Transparent bar: the three islands below carry the background; the gaps between
+   them are bare (mirrors sketchybar's transparent --bar + bracket islands). */
 .app {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   box-sizing: border-box;
   height: var(--bar-height);
   margin: var(--bar-gap) var(--bar-gap) 0;
-  padding: 0 var(--bar-pad-x);
-  border-radius: var(--bar-radius);
-  /* #1d202f @ ~93% — shared bar-background token */
-  background: rgba(29, 32, 47, 0.93);
+  background: transparent;
 }
 
+/* Each zone is a floating rounded island: translucent fill + a 2px colored rim.
+   left = blue · center = magenta · right = green — JankyBorders-style, echoing the
+   accent window borders GlazeWM draws. (#1d202f @ ~93% — shared bar-bg token.) */
 .left,
 .center,
 .right {
   display: flex;
   align-items: center;
+  box-sizing: border-box;
+  height: var(--island-height);
+  padding: 0 var(--island-pad-x);
+  background: rgba(29, 32, 47, 0.93);
+  border: var(--island-border-w) solid transparent;
+  border-radius: var(--bar-radius);
+}
+
+.left {
+  justify-self: start;
+  border-color: var(--tn-blue);
 }
 
 .center {
   justify-self: center;
+  border-color: var(--tn-purple);
+  color: var(--tn-purple);
 }
 
 .right {
   justify-self: end;
+  border-color: var(--tn-green);
 }
 
 .logo,
@@ -204,6 +224,28 @@ body,
 i {
   color: var(--tn-blue);
   margin-right: 7px;
+}
+
+/* Center island: clock glyph in magenta (the .center rule colors its text) — the
+   emphasis panel, matching sketchybar's magenta clock + center-island rim. */
+.center i {
+  color: var(--tn-purple);
+}
+
+/* Weather → orange (matches sketchybar weather.sh); lives in the left island now. */
+.weather {
+  color: var(--tn-orange);
+  margin-left: 16px;
+}
+
+.weather i {
+  color: var(--tn-orange);
+}
+
+/* Right-island separators (│) chunking I/O · load · power/ambient. */
+.sep {
+  color: var(--tn-comment);
+  margin: 0 4px;
 }
 
 /* --- Pomodoro (YASB port) --------------------------------------------------- */

@@ -14,50 +14,59 @@ Two bars, two hosts, one design: **Zebar** on the Windows/GlazeWM host
 `sketchybar` CLI). Different tech, deliberately identical result. This file is the
 canonical spec; both implementations follow it.
 
-## Layout (identical, left → center → right)
+## Layout (three islands, left → center → right)
 
-| Zone | Modules (in order) |
+The bar renders as **three floating "islands"**: the bar itself is transparent and
+each zone carries its own translucent rounded panel with a colored rim (see Geometry).
+
+| Island (rim) | Modules (in order) |
 | --- | --- |
-| **Left** | `logo` · `workspaces` · *(binding-mode — Windows only)* · `front_app` · `pomodoro` |
-| **Center** | `clock` |
-| **Right** | `network` · `volume` · `disk` · `memory` · `cpu` · `battery` · `weather` · *(caffeinate — macOS only)* · `power` |
+| **Left** (blue rim) | `logo` · `workspaces` · *(binding-mode — Windows only)* · `front_app` · `pomodoro` · *(caffeinate — macOS only)* · `weather` |
+| **Center** (magenta rim) | `clock` |
+| **Right** (green rim) | `network` · `volume` · `│` · `disk` · `memory` · `cpu` · `│` · `battery` · `power` |
+
+The right island carries two thin grey `│` separators that chunk it into
+**I/O · load · power/ambient** — one after `volume`, one after `cpu`.
 
 Two sanctioned platform exceptions (no cross-platform equivalent):
 
 - **binding-mode** — GlazeWM binding modes (e.g. `resize`); shown after
   `workspaces` only while a mode is active. AeroSpace has no equivalent.
-- **caffeinate / keep-awake** — macOS `caffeinate -di` toggle, far right before
-  `power`. No matching one-shot toggle on the Windows host.
+- **caffeinate / keep-awake** — macOS `caffeinate -di` toggle, in the **left island**
+  beside `pomodoro`. No matching one-shot toggle on the Windows host.
+
+`weather` lives in the **left island** on both hosts (a stable-width, non-urgent
+readout kept clear of the volatile right-island network figures and the centered clock).
 
 `logo` is a per-host brand glyph: Apple `` (macOS) / Windows `` (nf-fa-windows).
 `clock` uses the format `EEE d MMM t` → e.g. `Mon 13 Jul 2:45 PM`.
 
-## Geometry (floating rounded, matched proportions)
+## Geometry (three floating rounded islands)
 
 | Token | Value |
 | --- | --- |
-| Bar background | `#1d202f` @ ~93% alpha — `0xee1d202f` (sketchybar) / `rgba(29,32,47,0.93)` (Zebar) |
+| Island fill | `#1d202f` @ ~93% alpha — `0xee1d202f` (sketchybar) / `rgba(29,32,47,0.93)` (Zebar) |
+| Bar itself | **transparent** — the islands carry the background, the gaps between them are bare |
 | Outer float gap | 8px |
-| Bar corner radius | 9px |
-| Workspace container radius | 8px |
-| Blur | on |
+| Island corner radius | 9px |
+| Island rim | 2px solid — left **blue** `#7aa2f7` · center **magenta** `#bb9af7` · right **green** `#9ece6a` |
+| Island height | 28px, inset within the 36px bar |
+| Blur | **off** — a transparent bar has nothing to blur; islands are plain translucent fills |
 
-Individual items are **chip-less** — plain spaced icon+text directly on the
-translucent bar (no per-item background). The only rounded container is the
-`workspaces` group.
+Within each island, items stay **chip-less** — plain spaced icon+text on the island's
+translucent fill (no per-item background). The three islands are the only rounded
+containers; the focused-`workspace` highlight pill draws *over* the left island. The
+colored rims are JankyBorders-style and echo the accent (`#7aa2f7`) window borders the
+tiling WM draws.
 
 Sizes/spacing are **per-host tuning knobs**, kept in one place on each side so
-they're easy to iterate: sketchybar's `--bar` / `--default` block at the top of
+they're easy to iterate: sketchybar's `--bar` / `--default` / `ISLAND_ARGS` blocks in
 `sketchybarrc`, and Zebar's `:root` "tuning knobs" block at the top of `styles.css`
-(`--bar-font-size` / `--bar-height` / `--bar-gap` / `--bar-radius` / `--bar-pad-x` /
-`--item-gap`). They're tuned to *look* the same, not to be pixel-identical.
+(`--bar-font-size` / `--bar-height` / `--bar-gap` / `--bar-radius` / `--island-height` /
+`--island-pad-x` / `--item-gap`). They're tuned to *look* the same, not pixel-identical.
 
-- **sketchybar** floats natively: `--bar height=36 y_offset=4 margin=8 corner_radius=9 padding=2 blur_radius=20`.
-- **Zebar** floats via CSS: a transparent `zpack.json` window (`height: 52px`)
-  paints an inset rounded pill sized by the `:root` knobs (`.app { height:
-  var(--bar-height); margin: var(--bar-gap) var(--bar-gap) 0; … }`). Keep the zpack
-  window `height` ≥ `--bar-height + 2×--bar-gap` or the pill clips; GlazeWM's
-  `gaps.outer.top: 50px` clears the current pill.
+- **sketchybar**: transparent bar `--bar color=0x00000000 blur_radius=0 height=36 y_offset=4 margin=8 corner_radius=9 padding=2`; each island is a `bracket` with `background.color=0xee1d202f corner_radius=9 background.height=28 border_width=2` + its rim color.
+- **Zebar**: the `.app` grid is transparent; `.left` / `.center` / `.right` each paint an island (`background: rgba(29,32,47,0.93); border: 2px solid <rim>; border-radius: 9px`), sized by the `:root` knobs. Keep the `zpack.json` window `height` ≥ `--bar-height + 2×--bar-gap` or the islands clip; GlazeWM's `gaps.outer.top` clears them.
 
 ## Font
 
@@ -77,13 +86,14 @@ can't grow into the centered clock.
 | bg | `#24283b` | `0xff24283b` | item background |
 | fg | `#c0caf5` | `0xffc0caf5` | default text |
 | fg-dim | `#a9b1d6` | — | dimmed text (workspaces, power btns) |
-| blue / accent | `#7aa2f7` | `0xff7aa2f7` | active highlight, logo, workspaces, front_app, network, clock, weather, battery-charging |
+| blue / accent | `#7aa2f7` | `0xff7aa2f7` | active highlight, logo, workspaces, front_app, network, battery-charging, left-island rim |
 | green | `#9ece6a` | `0xff9ece6a` | load: low |
 | yellow | `#e0af68` | `0xffe0af68` | load: mid |
 | red | `#f7768e` | `0xfff7768e` | load: high |
 | cyan | `#7dcfff` | `0xff7dcfff` | volume |
-| purple | `#bb9af7` | `0xffbb9af7` | reserved (Tokyo Night accent; currently unused) |
-| grey / comment | `#565f89` | `0xff565f89` | inactive / dim |
+| purple / magenta | `#bb9af7` | `0xffbb9af7` | clock text + center-island rim |
+| orange | `#ff9e64` | `0xffff9e64` | weather + warm accents |
+| grey / comment | `#565f89` | `0xff565f89` | inactive / dim · `│` island separators |
 
 Shared thresholds (glyph **and** value colored together):
 
@@ -94,7 +104,8 @@ Shared thresholds (glyph **and** value colored together):
 | disk (used %) | <80 (fg) | 80–89 | 90+ |
 | battery (charge %) | >40 | 21–40 | ≤20 |
 
-`network` = blue. `volume` = cyan. `workspaces` focused = blue pill with dark text.
+`network` = blue. `volume` = cyan. `clock` = magenta/purple. `weather` = orange.
+`workspaces` focused = blue pill with dark text. Island rims: left **blue** · center **magenta** · right **green**.
 
 ## Glyphs (one nerd-font icon per module, used verbatim by both)
 
