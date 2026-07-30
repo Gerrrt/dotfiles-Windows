@@ -221,7 +221,7 @@
         }
 
         // Free disk on C: → { free label, color class } (matches sketchybar disk.sh thresholds:
-        // fg <80% used, yellow <90%, red otherwise).
+        // green <80% used, yellow <90%, red otherwise — green when healthy, never white).
         function diskInfo(diskOutput) {
           const disks = diskOutput?.disks ?? [];
           const disk =
@@ -232,7 +232,7 @@
           const total = disk.totalSpace?.bytes ?? 0;
           const avail = disk.availableSpace?.bytes ?? 0;
           const usedPct = total > 0 ? ((total - avail) / total) * 100 : 0;
-          const cls = usedPct >= 90 ? "c-red" : usedPct >= 80 ? "c-yellow" : "c-fg";
+          const cls = usedPct >= 90 ? "c-red" : usedPct >= 80 ? "c-yellow" : "c-green";
           const free = `${Math.round(disk.availableSpace?.siValue ?? 0)} ${
             disk.availableSpace?.siUnit ?? ""
           }`.trim();

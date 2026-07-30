@@ -101,7 +101,7 @@ Shared thresholds (glyph **and** value colored together):
 | --- | --- | --- | --- |
 | cpu | 0–49 | 50–79 | 80+ |
 | memory | <70 | 70–87 | 88+ |
-| disk (used %) | <80 (fg) | 80–89 | 90+ |
+| disk (used %) | <80 (green) | 80–89 | 90+ |
 | battery (charge %) | >40 | 21–40 | ≤20 |
 
 `network` = blue. `volume` = cyan. `clock` = magenta/purple. `weather` = orange.
