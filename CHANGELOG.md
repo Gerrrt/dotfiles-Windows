@@ -74,6 +74,11 @@ below._
   `set-window-option` (`setw -g`). Switched to `setw -g monitor-bell on` (the form the
   capability probe validated); `monitor-activity` stays `set -g` (psmux accepts that).
   (`psmux/psmux.conf`)
+- **Zebar network readout rendered white instead of blue.** The `.network` module had no
+  color class, so only its glyph got the global blue while the ↓↑ throughput values fell
+  back to `fg` (white). Added `.network { color: var(--tn-blue) }` so icon **and** values
+  are blue, matching sketchybar's `network.sh` (icon + label accent).
+  (`desktop/zebar/vanilla-clear/styles.css`)
 - **`:checkhealth gerrrt` no longer false-warns about the clipboard on the host.** It read
   "Core's cross-OS clipboard scripts are not on PATH (clip: found, clip-paste: missing)" —
   misleading, since `clip` only resolved to Windows' built-in `clip.exe` and the Unix/WSL
