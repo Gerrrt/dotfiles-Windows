@@ -32,6 +32,15 @@ below._
   manifest, so the host packages `lynx`** (Core's own next fallback; scoop Main) in
   `scoopfile.json`. Unlike Core's headless path, `$BROWSER` is never exported — the Windows
   host is GUI-first, so `web` stays an explicit opt-in verb.
+- **Command-block separators (parity with Core's `_cmd_block_*`).** A thin full-width rule
+  is drawn above each prompt that followed a command, colored by exit status — dim
+  (`#414868`) on success, red (`#f7768e`) on failure — turning scrollback into scannable
+  blocks. Ported as precmd/preexec (**not** a key handler, so it can't collide with
+  PSReadLine vi-mode): the `AddToHistoryHandler` sets `$global:DotCmdBlockRan` (a bare Enter
+  never accepts a line, so no rule is drawn on an empty prompt), and
+  `Invoke-Starship-PreCommand` draws the rule via `[Console]::Write`. Colour tracks
+  `$LASTEXITCODE` (the status reliable at that point); pure-cmdlet failures still surface in
+  starship's `[status]`. (`powershell/core/10-tools.ps1`)
 
 ### Changed
 

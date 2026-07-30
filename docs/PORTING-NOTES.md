@@ -165,6 +165,17 @@ prompt work. Split by what can be verified off-host vs. what needs a Windows box
 - **Windows Terminal cursor** — `cursorShape` `filledBox` → `bar` to match MacBook's
   ghostty `cursor-style = bar`. (Opacity + acrylic already match ghostty's
   translucency/blur; `padding` left at `0` by choice.)
+- **pwsh command-block separator** — port of Core's `_cmd_block_*` (`zsh/00-tools.zsh`):
+  a thin full-width rule above each prompt that followed a command, colored by exit
+  status (dim `#414868` ok / red `#f7768e` fail). Implemented as precmd/preexec, **not**
+  a key handler, so — like Core — it can't collide with PSReadLine vi-mode: the existing
+  `AddToHistoryHandler` sets `$global:DotCmdBlockRan` (fires only on a non-empty accepted
+  line, so a bare Enter draws nothing), and `Invoke-Starship-PreCommand` draws the rule
+  via `[Console]::Write` (never enters starship's prompt string). Colour tracks
+  `$LASTEXITCODE` (the only status reliable after starship's prompt fn reads `$?`); a
+  failed pure-cmdlet still shows in starship's `[status]`. **Landed but not yet
+  render-verified on a Windows host** — CI lints it (PSScriptAnalyzer); eyeball it on
+  first pull. (`powershell/core/10-tools.ps1`)
 
 **Deferred — needs on-device validation (can't be render-tested off-host):**
 
@@ -176,11 +187,11 @@ prompt work. Split by what can be verified off-host vs. what needs a Windows box
   confirming psmux implements `status-format[1]` / `monitor-activity` / `monitor-bell`
   against the binary before relying on them.
 - **pwsh transient prompt** — Core collapses finished prompts to a status-colored `❖`
-  (`olets/zsh-transient-prompt`). No host equivalent yet; pwsh route is a PSReadLine
-  handler. Core's own commit (`427e20e`) flags this a pwsh follow-up.
-- **pwsh command-block separator** — Core draws an exit-status-colored full-width rule
-  above each command (`_cmd_block_*` in `zsh/00-tools.zsh`). No host equivalent; pwsh
-  route is a `prompt`-function rule gated on "a command actually ran."
+  (`olets/zsh-transient-prompt`). Held deliberately: the only pwsh route is a PSReadLine
+  **Enter/AcceptLine key-handler override**, which interacts with the vi edit-mode and the
+  existing menu-complete / history key handlers in `10-tools.ps1` — exactly the vi-mode
+  collision Core avoids — so it must be built and tested against a live PSReadLine, not
+  shipped blind. Core's own commit (`427e20e`) flags it a pwsh follow-up.
 
 ## Windows-only additions
 

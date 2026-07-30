@@ -130,6 +130,10 @@ if ($script:DotAvailModules.Contains('PSReadLine')) {
     # unit-tested and word-boundaried — the bare `pwd` command is NOT dropped.
     Set-PSReadLineOption -AddToHistoryHandler {
         param([string]$line)
+        # preexec analog for the command-block separator (see Invoke-Starship-PreCommand):
+        # this handler only fires when a non-empty line is accepted, so a bare Enter never
+        # sets the flag — matching Core's preexec-gated "no rule on an empty prompt".
+        $global:DotCmdBlockRan = $true
         if (Test-SensitiveHistoryLine $line) { return [Microsoft.PowerShell.AddToHistoryOption]::MemoryOnly }
         return [Microsoft.PowerShell.AddToHistoryOption]::MemoryAndFile
     }
@@ -355,6 +359,31 @@ function global:prof-trace {
 # The FileSystem-provider guard keeps it quiet on Cert:\ / HKLM:\ / Function:\,
 # where there is no filesystem path to announce.
 function global:Invoke-Starship-PreCommand {
+    # ── Command-block separator (port of Core zsh 00-tools.zsh `_cmd_block_*`, P12) ──
+    # A thin full-width rule drawn above each prompt that FOLLOWED a command, colored by
+    # that command's exit status — dim (#414868) on success, red (#f7768e) on failure —
+    # so scrollback reads as scannable blocks. The AddToHistoryHandler above sets
+    # $global:DotCmdBlockRan as the preexec signal (a bare Enter never accepts a line, so
+    # it draws no rule, exactly like Core's preexec-flag gate). Written via [Console]::Write
+    # so it never lands in starship's prompt STRING.
+    # NOTE: at this point starship's prompt fn has already read `$?`, so only $LASTEXITCODE
+    # is reliable here — the rule tracks native-command exit codes; a failed pure-cmdlet
+    # still shows in starship's own [status] segment. $LASTEXITCODE captured FIRST so no
+    # later statement perturbs it (mirrors Core's `local ec=$?`).
+    $ec = $global:LASTEXITCODE
+    if ($global:DotCmdBlockRan) {
+        $global:DotCmdBlockRan = $false
+        try {
+            $w = [Console]::WindowWidth
+            if ($w -gt 0) {
+                $fail = ($ec -is [int]) -and ($ec -ne 0)
+                $col  = if ($fail) { "$([char]27)[38;2;247;118;142m" } else { "$([char]27)[38;2;65;72;104m" }
+                [Console]::Write($col + (([string][char]0x2500) * $w) + "$([char]27)[0m`n")
+            }
+        } catch { }   # no console (redirected / CI) → skip the rule, never throw
+    }
+
+    # ── OSC 7 cwd announce (for psmux's status-right cwd pill) ───────────────────
     if ($PWD.Provider.Name -ne 'FileSystem') { return }
     try {
         # [uri] does the percent-encoding for us (spaces, unicode, #, ...) and
