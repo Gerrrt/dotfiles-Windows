@@ -147,6 +147,52 @@ its own.
   Core. Note psmux reads `psmux.conf`, not `.tmux.conf`, so vendoring Core's
   tmux tree here means a copy-with-rename rather than a same-filename subtree.
 
+## 2026-07-30 parity sweep (Core + MacBook → host)
+
+A pass to catch the host up to recent Core/MacBook tmux, nvim, shell, terminal, and
+prompt work. Split by what can be verified off-host vs. what needs a Windows box.
+
+**Landed (mechanical / low-risk):**
+
+- **nvim re-synced** — the vendored tree was one Core commit behind
+  (`af35f3c`, a `lazy-lock.json` 4-plugin-SHA refresh). Re-mirrored; `nvim/.core-ref`
+  now points at Core `main` `a53ac4f` (was the pre-merge branch tip `e4dbbda`). The
+  rest of the tree (checkhealth LSP/formatter/clipboard work, statusline, alpha,
+  treesitter `regex` parser) was already current.
+- **starship** — verified **zero drift**: `starship/starship.toml` is byte-identical to
+  Core's, already carrying the minimal-capsule rewrite (`[cmd_duration]`, `[status]`,
+  hostname/container/shlvl). Nothing to sync.
+- **Windows Terminal cursor** — `cursorShape` `filledBox` → `bar` to match MacBook's
+  ghostty `cursor-style = bar`. (Opacity + acrylic already match ghostty's
+  translucency/blur; `padding` left at `0` by choice.)
+- **pwsh command-block separator** — port of Core's `_cmd_block_*` (`zsh/00-tools.zsh`):
+  a thin full-width rule above each prompt that followed a command, colored by exit
+  status (dim `#414868` ok / red `#f7768e` fail). Implemented as precmd/preexec, **not**
+  a key handler, so — like Core — it can't collide with PSReadLine vi-mode: the existing
+  `AddToHistoryHandler` sets `$global:DotCmdBlockRan` (fires only on a non-empty accepted
+  line, so a bare Enter draws nothing), and `Invoke-Starship-PreCommand` draws the rule
+  via `[Console]::Write` (never enters starship's prompt string). Colour tracks
+  `$LASTEXITCODE` (the only status reliable after starship's prompt fn reads `$?`); a
+  failed pure-cmdlet still shows in starship's `[status]`. **Landed but not yet
+  render-verified on a Windows host** — CI lints it (PSScriptAnalyzer); eyeball it on
+  first pull. (`powershell/core/10-tools.ps1`)
+
+**Deferred — needs on-device validation (can't be render-tested off-host):**
+
+- **psmux centered floating-island bar** — Core `tmux.conf` (`19d7a98`) moved to a
+  2-line, centered, transparent-pill bar with activity/bell dots; `psmux/psmux.conf`
+  still runs the old left-justified opaque-pill bar. Portable *look* only — the
+  nvim-cwd segment (`#{pane_current_command}`/`#{pane_current_path}`) must **not** be
+  ported (it reintroduces the documented per-keystroke process-table lag). Blocked on
+  confirming psmux implements `status-format[1]` / `monitor-activity` / `monitor-bell`
+  against the binary before relying on them.
+- **pwsh transient prompt** — Core collapses finished prompts to a status-colored `❖`
+  (`olets/zsh-transient-prompt`). Held deliberately: the only pwsh route is a PSReadLine
+  **Enter/AcceptLine key-handler override**, which interacts with the vi edit-mode and the
+  existing menu-complete / history key handlers in `10-tools.ps1` — exactly the vi-mode
+  collision Core avoids — so it must be built and tested against a live PSReadLine, not
+  shipped blind. Core's own commit (`427e20e`) flags it a pwsh follow-up.
+
 ## Windows-only additions
 
 - `wsl/windows.wslconfig.example` — canonical home for the host WSL2 config

@@ -32,6 +32,15 @@ below._
   manifest, so the host packages `lynx`** (Core's own next fallback; scoop Main) in
   `scoopfile.json`. Unlike Core's headless path, `$BROWSER` is never exported — the Windows
   host is GUI-first, so `web` stays an explicit opt-in verb.
+- **Command-block separators (parity with Core's `_cmd_block_*`).** A thin full-width rule
+  is drawn above each prompt that followed a command, colored by exit status — dim
+  (`#414868`) on success, red (`#f7768e`) on failure — turning scrollback into scannable
+  blocks. Ported as precmd/preexec (**not** a key handler, so it can't collide with
+  PSReadLine vi-mode): the `AddToHistoryHandler` sets `$global:DotCmdBlockRan` (a bare Enter
+  never accepts a line, so no rule is drawn on an empty prompt), and
+  `Invoke-Starship-PreCommand` draws the rule via `[Console]::Write`. Colour tracks
+  `$LASTEXITCODE` (the status reliable at that point); pure-cmdlet failures still surface in
+  starship's `[status]`. (`powershell/core/10-tools.ps1`)
 
 ### Changed
 
@@ -41,6 +50,13 @@ below._
   the new `:checkhealth gerrrt` **LSP / formatter / linter** readiness sections, and the
   `servers/init.lua` read-only `status()` export those sections consume. `nvim/.core-ref`
   updated to the synced commit. (`nvim/`, via `nvim-sync.ps1`)
+- **Re-synced `nvim/` to Core `main` `a53ac4f`** — a follow-up mirror picking up the
+  `lazy-lock.json` plugin-pin refresh (4 SHAs); `nvim/.core-ref` re-pointed from the
+  pre-merge branch tip to `main`. `starship.toml` verified byte-identical to Core (no
+  sync needed). (`nvim/lazy-lock.json`, `nvim/.core-ref`)
+- **Windows Terminal cursor → `bar`** — `cursorShape` `filledBox` → `bar` to match
+  MacBook's ghostty `cursor-style = bar` for cross-terminal parity.
+  (`windows-terminal/settings.json`)
 
 ### Fixed
 
