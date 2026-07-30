@@ -57,6 +57,15 @@ below._
 - **Windows Terminal cursor → `bar`** — `cursorShape` `filledBox` → `bar` to match
   MacBook's ghostty `cursor-style = bar` for cross-terminal parity.
   (`windows-terminal/settings.json`)
+- **psmux status bar → Core's centered floating-island look.** Ported Core `tmux.conf`'s
+  island redesign to `psmux/psmux.conf`: a 2-line, **centered**, **transparent** bar
+  (`status 2` + blank `status-format[1]`, `status-justify centre`, `status-style
+  bg=default`, `bg=default` pill caps + pane borders) with flat **underlined** window tabs
+  and `monitor-activity`/`monitor-bell` **•** dots for unseen output/bells — replacing the
+  old left-justified opaque-pill bar. All five psmux features were probed as supported
+  (psmux 3.3.7) before porting. Stays within psmux's no-shell-out / no-process-table rules:
+  the cwd pill keeps `#{b:pane_path}` (OSC 7) and Core's nvim-gated `pane_current_path`
+  segment is intentionally **not** ported. (`psmux/psmux.conf`)
 
 ### Fixed
 
