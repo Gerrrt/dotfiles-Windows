@@ -51,7 +51,10 @@ $CAP_R = ""
 
 function Pill {
     param([string]$Accent, [string]$Text)
-    $script:LastPill = "#[fg=$BG,bg=$BGHL]$CAP_L#[fg=$Accent,bg=$BG,bold]$Text#[fg=$BG,bg=$BGHL]$CAP_R"
+    # Caps use bg=default so the pill floats on the transparent island bar (the 2026
+    # island retheme set status-style bg=default; $BGHL would paint an opaque #292e42
+    # block behind the caps). Body stays $BG, like the session/cwd/clock pills.
+    $script:LastPill = "#[fg=$BG,bg=default]$CAP_L#[fg=$Accent,bg=$BG,bold]$Text#[fg=$BG,bg=default]$CAP_R"
     $script:LastPill
 }
 
@@ -129,3 +132,9 @@ try {
     if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
     [System.IO.File]::WriteAllText($OutFile, $script:LastPill, (New-Object System.Text.UTF8Encoding($false)))
 } catch { }
+
+# Also poke the pill straight into psmux as a user option, so the status bar can read
+# it with a free in-process lookup (#{@vpn_pill} in psmux.conf's status-left) instead of
+# a #(type) shell-out — the lag-safe transport the retired-pill note recommends. Empty
+# LastPill (no tunnel / no LAN) clears the segment. Harmless if no psmux server is up.
+try { & psmux set -g @vpn_pill $script:LastPill 2>$null } catch { }
