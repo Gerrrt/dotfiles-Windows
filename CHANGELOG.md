@@ -41,6 +41,13 @@ below._
   the new `:checkhealth gerrrt` **LSP / formatter / linter** readiness sections, and the
   `servers/init.lua` read-only `status()` export those sections consume. `nvim/.core-ref`
   updated to the synced commit. (`nvim/`, via `nvim-sync.ps1`)
+- **Re-synced `nvim/` to Core `main` `a53ac4f`** — a follow-up mirror picking up the
+  `lazy-lock.json` plugin-pin refresh (4 SHAs); `nvim/.core-ref` re-pointed from the
+  pre-merge branch tip to `main`. `starship.toml` verified byte-identical to Core (no
+  sync needed). (`nvim/lazy-lock.json`, `nvim/.core-ref`)
+- **Windows Terminal cursor → `bar`** — `cursorShape` `filledBox` → `bar` to match
+  MacBook's ghostty `cursor-style = bar` for cross-terminal parity.
+  (`windows-terminal/settings.json`)
 
 ### Fixed
 

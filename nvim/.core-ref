@@ -1,8 +1,8 @@
 # dotfiles-Windows :: nvim vendor provenance (written by nvim-sync.ps1)
 # The Core commit this nvim/ tree was vendored from. dotfiles-doctor reads it.
 source = https://github.com/dotgibson/dotfiles-core.git
-branch = claude/dotfiles-platform-parity-e63nxl
+branch = main
 pinned = (branch tip)
-commit = e4dbbda0c417187986ea29aaf71cc866658a197d
-date   = 2026-07-29
-synced = 2026-07-29T00:00:00Z
+commit = a53ac4fe38e17476405e6ed87f00dc71c45888df
+date   = 2026-07-30
+synced = 2026-07-30T00:00:00Z

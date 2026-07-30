@@ -75,7 +75,7 @@
     "defaults": {
       "antialiasingMode": "cleartype",
       "colorScheme": "Tokyo Night",
-      "cursorShape": "filledBox",
+      "cursorShape": "bar",
       "font": {
         "face": "CaskaydiaCove Nerd Font",
         "size": 16
