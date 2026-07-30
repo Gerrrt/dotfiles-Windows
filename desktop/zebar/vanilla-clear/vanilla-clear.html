@@ -376,8 +376,11 @@
                 </div>
               )}
 
-              {/* separator: I/O ↔ load */}
-              <span className="sep">│</span>
+              {/* separator: I/O ↔ load — only when the I/O group actually rendered */}
+              {(output.network?.traffic ||
+                output.audio?.defaultPlaybackDevice) && (
+                <span className="sep">│</span>
+              )}
 
               {/* Free space on C:, colored when it runs low. */}
               {(() => {
@@ -404,8 +407,8 @@
                 </div>
               )}
 
-              {/* separator: load ↔ power/ambient */}
-              <span className="sep">│</span>
+              {/* separator: load ↔ power/ambient — only when the load group rendered */}
+              {output.cpu && <span className="sep">│</span>}
 
               {output.battery && (
                 <div className={`battery ${batteryClass(output.battery)}`}>

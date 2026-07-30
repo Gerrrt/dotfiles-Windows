@@ -55,10 +55,9 @@ body,
   background: transparent; /* the floating pill is painted on .app, not the full window */
 }
 
-/* Floating rounded bar: an inset translucent pill sized by the tuning knobs above
-   (matches sketchybar's margin/corner_radius). GlazeWM's gaps.outer.top clears it. */
 /* Transparent bar: the three islands below carry the background; the gaps between
-   them are bare (mirrors sketchybar's transparent --bar + bracket islands). */
+   them are bare (mirrors sketchybar's transparent --bar + bracket islands). The
+   window envelope is still zpack.json's height; GlazeWM's gaps.outer.top clears it. */
 .app {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
