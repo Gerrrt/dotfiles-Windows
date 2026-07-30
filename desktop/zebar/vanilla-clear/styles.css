@@ -248,6 +248,27 @@ i {
   color: var(--tn-orange);
 }
 
+/* Caffeine / keep-awake placeholder — asleep grey, awake yellow (matches sketchybar
+   caffeinate.sh). Visual only for now; see the Caffeine component comment in the HTML. */
+.caffeine {
+  display: flex;
+  align-items: center;
+  margin-left: 16px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--tn-comment);
+}
+
+.caffeine.awake {
+  color: var(--tn-yellow);
+}
+
+.caffeine i {
+  color: inherit;
+}
+
 /* Right-island separators (│) chunking I/O · load · power/ambient. */
 .sep {
   color: var(--tn-comment);
