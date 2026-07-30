@@ -176,16 +176,20 @@ prompt work. Split by what can be verified off-host vs. what needs a Windows box
   failed pure-cmdlet still shows in starship's `[status]`. **Landed but not yet
   render-verified on a Windows host** — CI lints it (PSScriptAnalyzer); eyeball it on
   first pull. (`powershell/core/10-tools.ps1`)
+- **psmux centered floating-island bar** — port of Core `tmux.conf`'s `19d7a98` island
+  redesign: `status 2` + blank `status-format[1]` (2-line), `status-justify centre`,
+  transparent `status-style bg=default` + `bg=default` pill caps and pane borders,
+  `monitor-activity`/`monitor-bell` with activity/bell **•** dots in the tabs, and flat
+  **underlined** window tabs instead of pills. All five features were probed as supported
+  on psmux 3.3.7 before porting. Kept psmux-native: the cwd pill stays `#{b:pane_path}`
+  (OSC 7, the shell's `Invoke-Starship-PreCommand` announces it) — Core's nvim-gated
+  `#{pane_current_command}`/`#{pane_current_path}` segment was **deliberately not ported**
+  (it walks the process table on every render — the documented keystroke-lag bug). No
+  `#()` anywhere, per the bar's hard no-shell-out rule. **Landed but not yet
+  render-verified on a Windows host** — reload psmux and eyeball. (`psmux/psmux.conf`)
 
 **Deferred — needs on-device validation (can't be render-tested off-host):**
 
-- **psmux centered floating-island bar** — Core `tmux.conf` (`19d7a98`) moved to a
-  2-line, centered, transparent-pill bar with activity/bell dots; `psmux/psmux.conf`
-  still runs the old left-justified opaque-pill bar. Portable *look* only — the
-  nvim-cwd segment (`#{pane_current_command}`/`#{pane_current_path}`) must **not** be
-  ported (it reintroduces the documented per-keystroke process-table lag). Blocked on
-  confirming psmux implements `status-format[1]` / `monitor-activity` / `monitor-bell`
-  against the binary before relying on them.
 - **pwsh transient prompt** — Core collapses finished prompts to a status-colored `❖`
   (`olets/zsh-transient-prompt`). Held deliberately: the only pwsh route is a PSReadLine
   **Enter/AcceptLine key-handler override**, which interacts with the vi edit-mode and the
