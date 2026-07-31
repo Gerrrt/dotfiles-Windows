@@ -434,7 +434,7 @@
               {/* separator: load ↔ power/ambient — only when the load group rendered */}
               {output.cpu && <span className="sep">│</span>}
 
-              {output.battery && (
+              {output.battery ? (
                 <div className={`battery ${batteryClass(output.battery)}`}>
                   {/* Show icon for whether battery is charging. */}
                   {output.battery.isCharging && (
@@ -442,6 +442,11 @@
                   )}
                   {getBatteryIcon(output.battery)}
                   {Math.round(output.battery.chargePercent)}%
+                </div>
+              ) : (
+                /* No battery (desktop) — placeholder: on AC power, green plug. */
+                <div className="battery c-green" title="on AC power (no battery)">
+                  <i className="nf nf-md-power_plug"></i>
                 </div>
               )}
 

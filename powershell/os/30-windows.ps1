@@ -162,5 +162,5 @@ if ((Test-Cmd psmux) -and -not $InMux -and -not $env:PSMUX_AUTOLAUNCHED -and
     $env:PSMUX_NO_AUTOLAUNCH -ne '1' -and
     (Test-InteractiveShell)) {
     $env:PSMUX_AUTOLAUNCHED = '1'
-    psmux new-session -A -s main
+    psmux new-session -A -s Gerrrt
 }
