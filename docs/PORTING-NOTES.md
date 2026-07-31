@@ -179,7 +179,7 @@ prompt work. Split by what can be verified off-host vs. what needs a Windows box
 - **psmux centered floating-island bar** — port of Core `tmux.conf`'s `19d7a98` island
   redesign: `status 2` + blank `status-format[1]` (2-line), `status-justify centre`,
   transparent `status-style bg=default` + `bg=default` pill caps and pane borders,
-  `monitor-activity`/`monitor-bell` with activity/bell **•** dots in the tabs, and flat
+  `monitor-activity` with activity **•** dots in the tabs (psmux has no `monitor-bell`), and flat
   **underlined** window tabs instead of pills. All five features were probed as supported
   on psmux 3.3.7 before porting. Kept psmux-native: the cwd pill stays `#{b:pane_path}`
   (OSC 7, the shell's `Invoke-Starship-PreCommand` announces it) — Core's nvim-gated
