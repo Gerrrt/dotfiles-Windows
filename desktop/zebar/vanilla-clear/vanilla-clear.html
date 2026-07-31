@@ -133,6 +133,29 @@
         );
       }
 
+      // --- Caffeine / keep-awake (PLACEHOLDER) --------------------------------
+      // Visual twin of sketchybar's caffeinate toggle. Windows has no clean one-shot
+      // keep-awake, so this is a PLACEHOLDER: it flips the awake/asleep glyph + color
+      // (matching the Mac bar) but does NOT yet block sleep. To make it real, wire the
+      // onClick to an actual keep-awake — e.g. PowerToys Awake, or a small helper that
+      // calls SetThreadExecutionState(ES_CONTINUOUS|ES_SYSTEM_REQUIRED) — via
+      // zebar.shellExec + a zpack.json `privileges.shellCommands` whitelist entry.
+      function Caffeine() {
+        const [awake, setAwake] = useState(false);
+        return (
+          <button
+            type="button"
+            className={`caffeine ${awake ? "awake" : "asleep"}`}
+            title="keep-awake (placeholder — not yet wired on Windows)"
+            onClick={() => setAwake((v) => !v)}
+          >
+            <i
+              className={`nf ${awake ? "nf-md-coffee" : "nf-md-power_sleep"}`}
+            ></i>
+          </button>
+        );
+      }
+
       // --- Power menu (ported from the YASB config) ---------------------------
       // A power icon that expands to lock/sleep/restart/shutdown. Each action runs
       // a shell command via Zebar's shellExec — the `shutdown`/`rundll32` programs
@@ -340,13 +363,14 @@
               )}
 
               <Pomodoro />
+              <Caffeine />
 
               {/* Weather — moved into the left island (stable-width, non-urgent; kept
                   clear of the volatile right-island network figures + centered clock). */}
               {output.weather && (
                 <div className="weather">
                   {getWeatherIcon(output.weather)}
-                  {Math.round(output.weather.celsiusTemp)}°C
+                  {Math.round(output.weather.fahrenheitTemp)}°F
                 </div>
               )}
             </div>

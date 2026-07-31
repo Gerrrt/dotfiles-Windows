@@ -68,10 +68,19 @@ window_behavior:
       shown_on_top: false
 
 # Five workspaces, matching AeroSpace's persistent 1–5.
+# bind_to_monitor pins the low workspaces to physical monitors so the numbering reads
+# left→right = 1·2·3 (like macOS), instead of GlazeWM's default Windows-enumeration order
+# (which showed 2·3·4). The index is GlazeWM's monitor index — ASSUMED here to be
+# 0=left, 1=middle, 2=right. If your row comes out in a different order, run
+# `glazewm query monitors`, note each monitor's index vs physical position, and swap the
+# indices below to match. Workspaces 4·5 stay unbound (float to the focused monitor).
 workspaces:
   - name: "1"
+    bind_to_monitor: 0
   - name: "2"
+    bind_to_monitor: 1
   - name: "3"
+    bind_to_monitor: 2
   - name: "4"
   - name: "5"
 

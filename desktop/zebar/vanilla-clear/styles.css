@@ -231,6 +231,13 @@ i {
   color: var(--tn-purple);
 }
 
+/* Network → blue, icon AND throughput values (matches sketchybar network.sh). The
+   .network div carries no severity class, so without this the ↓↑ numbers fall back
+   to fg (white) while only the glyph gets the global blue — this colors the text too. */
+.network {
+  color: var(--tn-blue);
+}
+
 /* Weather → orange (matches sketchybar weather.sh); lives in the left island now. */
 .weather {
   color: var(--tn-orange);
@@ -239,6 +246,27 @@ i {
 
 .weather i {
   color: var(--tn-orange);
+}
+
+/* Caffeine / keep-awake placeholder — asleep grey, awake yellow (matches sketchybar
+   caffeinate.sh). Visual only for now; see the Caffeine component comment in the HTML. */
+.caffeine {
+  display: flex;
+  align-items: center;
+  margin-left: 16px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--tn-comment);
+}
+
+.caffeine.awake {
+  color: var(--tn-yellow);
+}
+
+.caffeine i {
+  color: inherit;
 }
 
 /* Right-island separators (│) chunking I/O · load · power/ambient. */
