@@ -29,7 +29,7 @@
   --bar-height: 36px; /* painted pill height (sketchybar --bar height=36) */
   --bar-gap: 8px; /* float gap top/sides (sketchybar margin=8 / y_offset) */
   --bar-radius: 9px; /* island corner radius (sketchybar corner_radius=9) */
-  --item-gap: 20px; /* space between right-group items */
+  --item-gap: 8px; /* space between right-group items — matches sketchybar's per-item padding (padding_left=4 + padding_right=4 = 8px) */
   /* Islands: transparent bar + 3 bordered translucent panels (PARITY.md geometry) */
   --island-height: 28px; /* inset panel height within the bar (sketchybar background.height=28) */
   --island-pad-x: 10px; /* inner horizontal padding of each island */
@@ -141,21 +141,24 @@ body,
   align-items: center;
 }
 
+/* Matches sketchybar's aerospace.sh: ONLY the focused workspace is highlighted (blue
+   background + dark text); every other workspace is a plain grey number with no chip.
+   (GlazeWM's `.displayed` distinction is dropped for macOS parity — aerospace shows just
+   the single focused workspace.) */
 .workspace {
-  background: rgb(122 162 247 / 8%);
+  background: transparent;
   margin-right: 4px;
   padding: 4px 8px;
-  color: var(--tn-fg-dim);
+  color: var(--tn-comment);
   border: none;
   border-radius: 4px;
   cursor: pointer;
 
-  &.displayed {
+  &:hover {
     background: rgb(122 162 247 / 18%);
   }
 
-  &.focused,
-  &:hover {
+  &.focused {
     background: var(--tn-blue);
     color: var(--tn-bg);
   }
