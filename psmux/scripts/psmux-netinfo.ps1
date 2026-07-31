@@ -51,10 +51,9 @@ $CAP_R = ""
 
 function Pill {
     param([string]$Accent, [string]$Text)
-    # Caps use bg=default so the pill floats on the transparent island bar (the 2026
-    # island retheme set status-style bg=default; $BGHL would paint an opaque #292e42
-    # block behind the caps). Body stays $BG, like the session/cwd/clock pills.
-    $script:LastPill = "#[fg=$BG,bg=default]$CAP_L#[fg=$Accent,bg=$BG,bold]$Text#[fg=$BG,bg=default]$CAP_R"
+    # Chip-less: plain colored icon+text, no caps/background — matches the transparent
+    # bar's session/cwd/clock segments (macOS sketchybar + Zebar are chip-less too).
+    $script:LastPill = "#[fg=$Accent,bold]$Text"
     $script:LastPill
 }
 

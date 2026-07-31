@@ -19,9 +19,9 @@ if (-not (Test-Cmd psmux)) { return }
 
 # mux — attach to the running session, or create it if it doesn't exist. One
 # word to get into your persistent multiplexer (parity with `up`, `serve`, ...).
-#   mux            # attach-or-create the 'main' session
+#   mux            # attach-or-create the default 'Gerrrt' session
 #   mux scan       # attach-or-create a session named 'scan' (e.g. per engagement)
 function mux {
-    param([string]$Session = 'main')
+    param([string]$Session = 'Gerrrt')
     psmux new-session -A -s $Session
 }
