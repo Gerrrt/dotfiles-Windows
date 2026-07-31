@@ -108,7 +108,7 @@ persistence work in **pwsh on the host** without WSL, Cygwin, or MSYS2. It ships
 | Install  | scoop (`psmux` bucket → `psmux` app), in `packages/scoopfile.json`                                      |
 | Commands | `psmux` / `pmux` / `tmux` (identical)                                                                   |
 | Config   | `psmux/psmux.conf` (+ `psmux.reset.conf`, `scripts/`), symlinked to `~/.config/psmux/` by `install.ps1` |
-| Helper   | `mux [session]` (in `os/32-psmux.ps1`) — attach-or-create; defaults to `main`                           |
+| Helper   | `mux [session]` (in `os/32-psmux.ps1`) — attach-or-create; defaults to `Gerrrt`                         |
 | Requires | Windows 10/11 + PowerShell 7 (already the host target)                                                  |
 
 The vendored `psmux/psmux.conf` sticks to mostly **portable** tmux options

@@ -61,7 +61,7 @@ below._
   island redesign to `psmux/psmux.conf`: a 2-line, **centered**, **transparent** bar
   (`status 2` + blank `status-format[1]`, `status-justify centre`, `status-style
   bg=default`, `bg=default` pill caps + pane borders) with flat **underlined** window tabs
-  and `monitor-activity`/`monitor-bell` **•** dots for unseen output/bells — replacing the
+  and `monitor-activity` **•** dots for unseen output (psmux has no `monitor-bell`) — replacing the
   old left-justified opaque-pill bar. All five psmux features were probed as supported
   (psmux 3.3.7) before porting. Stays within psmux's no-shell-out / no-process-table rules:
   the cwd pill keeps `#{b:pane_path}` (OSC 7) and Core's nvim-gated `pane_current_path`
@@ -69,11 +69,11 @@ below._
 
 ### Fixed
 
-- **psmux config warning: `unknown option 'monitor-bell'`.** The island-bar status block
-  set `monitor-bell` with `set -g`, but psmux only accepts it as a **window** option via
-  `set-window-option` (`setw -g`). Switched to `setw -g monitor-bell on` (the form the
-  capability probe validated); `monitor-activity` stays `set -g` (psmux accepts that).
-  (`psmux/psmux.conf`)
+- **psmux config warning: `unknown option 'monitor-bell'`.** psmux 3.3.7 doesn't implement
+  `monitor-bell` at all — its CLI `setw`/`set` returns exit 0 (so the capability probe was a
+  false positive) but the config parser rejects it on load. Removed the setting;
+  `monitor-activity` (which psmux does support) stays, so activity dots still work — only the
+  bell dot is inert. (`psmux/psmux.conf`)
 - **Zebar network readout rendered white instead of blue.** The `.network` module had no
   color class, so only its glyph got the global blue while the ↓↑ throughput values fell
   back to `fg` (white). Added `.network { color: var(--tn-blue) }` so icon **and** values

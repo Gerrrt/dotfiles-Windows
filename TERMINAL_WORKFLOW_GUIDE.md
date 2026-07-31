@@ -78,7 +78,7 @@ The dispatcher globs `core/*.ps1`, sorts by name, dot-sources each; then the sam
 **`os/` (Windows-host overlay), loaded after `core/` so it can override:**
 
 - **`30-windows.ps1`** — scoop/winget verbs (`scu`/`sci`/`wgi`/…), `path`/`open`/`admin`/
-  `setenv`/`getenv`, `modules-localize`, and the **psmux auto-attach** (`psmux new-session -A -s main`).
+  `setenv`/`getenv`, `modules-localize`, and the **psmux auto-attach** (`psmux new-session -A -s Gerrrt`).
 - **`31-wsl-bridge.ps1`** — `kali`, `wsls`, `wslip`, `cdwsl`, `hostip`, `wslhome`, `wsl-restart`. §8.7.
 - **`32-psmux.ps1`** — the `mux` verb (attach-or-create). **`33-psmux-pill.ps1`** — the file-backed
   operator/VPN status pill (§2.7).
@@ -195,9 +195,9 @@ the cwd basename, and the clock (`%H:%M`). Each live segment carries a Nerd-Font
 
 ### 2.6 Session workflows
 
-- **`mux [name]`** (`os/32-psmux.ps1`) = `psmux new-session -A -s <name>` (attach-or-create; default `main`).
+- **`mux [name]`** (`os/32-psmux.ps1`) = `psmux new-session -A -s <name>` (attach-or-create; default `Gerrrt`).
 - **Auto-attach** (`os/30-windows.ps1`): a top-level interactive shell auto-runs `psmux new-session
-  -A -s main`. Guards: `psmux` present, not already `Test-InMux`, not re-entrant, and
+  -A -s Gerrrt`. Guards: `psmux` present, not already `Test-InMux`, not re-entrant, and
   `PSMUX_NO_AUTOLAUNCH != 1`. Escape hatch: `PSMUX_NO_AUTOLAUNCH=1`.
 - **Pane detection**: `Test-InMux` = `[bool]($env:TMUX -or $env:PSMUX_SESSION)` — the single
   source of truth used by mise-shims, the pill, and the init-cache fast-path.

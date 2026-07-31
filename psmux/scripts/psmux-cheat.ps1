@@ -69,7 +69,7 @@ $rows = @(
     # ── shell · pwsh functions (host) ──────────────────────────────────────────
     ,@('cmd', 'up',                  'apply scoop + winget updates  (up -y = auto-confirm winget)')
     ,@('cmd', 'update-check',        'force the update check now')
-    ,@('cmd', 'mux [session]',       'attach-or-create a psmux session (default: main)')
+    ,@('cmd', 'mux [session]',       'attach-or-create a psmux session (default: Gerrrt)')
     ,@('cmd', 'serve [port]',        'HTTP server in cwd; prints the LAN URL')
     ,@('cmd', 'fif <text>',          'find text inside files (rg + fzf -> nvim)')
     ,@('cmd', 'fbr',                 'fuzzy git-branch checkout')
