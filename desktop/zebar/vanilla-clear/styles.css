@@ -29,7 +29,7 @@
   --bar-height: 36px; /* painted pill height (sketchybar --bar height=36) */
   --bar-gap: 8px; /* float gap top/sides (sketchybar margin=8 / y_offset) */
   --bar-radius: 9px; /* island corner radius (sketchybar corner_radius=9) */
-  --item-gap: 14px; /* space between right-group items — tightened toward sketchybar's ~8–14px (nudge to taste) */
+  --item-gap: 8px; /* space between right-group items — matches sketchybar's per-item padding (padding_left=4 + padding_right=4 = 8px) */
   /* Islands: transparent bar + 3 bordered translucent panels (PARITY.md geometry) */
   --island-height: 28px; /* inset panel height within the bar (sketchybar background.height=28) */
   --island-pad-x: 10px; /* inner horizontal padding of each island */
