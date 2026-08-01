@@ -6,6 +6,8 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+_Nothing yet._
+
 ## [v1.5.0] - 2026-08-01
 
 _**Core → Windows parity pass (2026-07).** A focused sweep to close the drift that had
