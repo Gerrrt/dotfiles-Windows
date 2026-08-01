@@ -35,6 +35,10 @@ $ErrorActionPreference = 'SilentlyContinue'
 # Stashed by Pill() so the file-write at the bottom can persist the chosen pill
 # without re-running detection. Empty string = "render nothing".
 $script:LastPill = ''
+# The pill's accent colour travels in its OWN psmux option (@vpn_fg), applied as
+# #[fg=#{@vpn_fg}] in status-left — see the Pill() note for why the colour can't ride
+# inside @vpn_pill. Default green; Pill() overrides it per state (orange tunnel / green LAN).
+$script:LastFg = '#9ece6a'
 
 # tokyonight-storm palette. Literal hex on purpose: psmux does not expand #{@tn_*}
 # inside #[...] (whether in style options or in #() output), and BG is the bar's
@@ -53,7 +57,14 @@ function Pill {
     param([string]$Accent, [string]$Text)
     # Chip-less: plain colored icon+text, no caps/background — matches the transparent
     # bar's session/cwd/clock segments (macOS sketchybar + Zebar are chip-less too).
-    $script:LastPill = "#[fg=$Accent,bold]$Text"
+    #
+    # Store the pill as PLAIN text (glyph + address, no #[...]). It's poked into psmux as
+    # `set -g @vpn_pill '<text>'`, and an option VALUE that contains a #[…] style run is NOT
+    # re-interpreted when the bar expands #{@vpn_pill} — the segment renders blank. So the
+    # COLOUR travels separately in @vpn_fg (applied as #[fg=#{@vpn_fg}] in status-left, the
+    # same way the @tn_* palette colours are consumed), and @vpn_pill carries text only.
+    $script:LastFg   = $Accent
+    $script:LastPill = $Text
     $script:LastPill
 }
 
@@ -136,4 +147,10 @@ try {
 # it with a free in-process lookup (#{@vpn_pill} in psmux.conf's status-left) instead of
 # a #(type) shell-out — the lag-safe transport the retired-pill note recommends. Empty
 # LastPill (no tunnel / no LAN) clears the segment. Harmless if no psmux server is up.
-try { & psmux set -g @vpn_pill $script:LastPill 2>$null } catch { }
+# Poke the colour first, then the text: the bar reads #[fg=#{@vpn_fg}]#{@vpn_pill}, so the
+# colour option should be current before the text it paints appears. Empty text clears the
+# segment. Harmless if no psmux server is up.
+try {
+    & psmux set -g @vpn_fg   $script:LastFg   2>$null
+    & psmux set -g @vpn_pill $script:LastPill 2>$null
+} catch { }
