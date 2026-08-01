@@ -6,6 +6,10 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [v1.5.0] - 2026-08-01
+
 _**Core → Windows parity pass (2026-07).** A focused sweep to close the drift that had
 built up between recent `dotfiles-core` / `dotfiles-MacBook` work and the Windows host,
 kicked off by a host `:checkhealth` dump. In short: the stale `nvim/` mirror was
@@ -15,8 +19,15 @@ clipboard false-warning was fixed upstream in Core and pulled in; the psmux
 `:checkhealth` tmux noise was documented as the cosmetic wart it is; and the two
 mid-2026 Core CLI tools the
 host still lacked were wired up — `jnv` (interactive JSON explorer) and a `web`
-terminal-browser verb (via `lynx`, since `w3m` has no scoop manifest). Per-change detail
-below._
+terminal-browser verb (via `lynx`, since `w3m` has no scoop manifest)._
+
+_**Status-bar redesign (2026-07/08).** The parity pass then widened into a full bar
+rework across both surfaces the host draws — psmux (terminal) and Zebar (desktop) — with
+macOS sketchybar as the reference. Both converged on the same **chip-less items on a
+transparent bar** language, and `PARITY.md` was rewritten to describe the three-island
+layout the macOS bar had already drifted to (adopt, not revert), so the shared contract
+is true for both hosts again. Several entries below are live-testing fixes from actually
+running it. Per-change detail below._
 
 ### Added
 
@@ -41,6 +52,13 @@ below._
   `Invoke-Starship-PreCommand` draws the rule via `[Console]::Write`. Colour tracks
   `$LASTEXITCODE` (the status reliable at that point); pure-cmdlet failures still surface in
   starship's `[status]`. (`powershell/core/10-tools.ps1`)
+- **Zebar caffeine / keep-awake indicator.** A placeholder matching sketchybar's
+  `caffeinate.sh` — grey asleep, yellow awake — in the left island. **Visual only for now**:
+  it renders state but doesn't yet drive a keep-awake mechanism on the host (see the Caffeine
+  component comment in the HTML). (`desktop/zebar/vanilla-clear/`)
+- **Zebar battery shows an AC-power placeholder on desktops.** A machine with no battery
+  rendered nothing at all, leaving a gap in the right island; it now shows a green plug glyph.
+  (`desktop/zebar/vanilla-clear/`)
 
 ### Changed
 
@@ -59,24 +77,78 @@ below._
   (`windows-terminal/settings.json`)
 - **psmux status bar → Core's centered floating-island look.** Ported Core `tmux.conf`'s
   island redesign to `psmux/psmux.conf`: a 2-line, **centered**, **transparent** bar
-  (`status 2` + blank `status-format[1]`, `status-justify centre`, `status-style
-  bg=default`, `bg=default` pill caps + pane borders) with flat **underlined** window tabs
+  (`status 2` + blank `status-format[1]`, `status-justify centre` — later `absolute-centre`,
+  see Fixed — `status-style bg=default`, `bg=default` pill caps + pane borders) with flat **underlined** window tabs
   and `monitor-activity` **•** dots for unseen output (psmux has no `monitor-bell`) — replacing the
   old left-justified opaque-pill bar. All five psmux features were probed as supported
   (psmux 3.3.7) before porting. Stays within psmux's no-shell-out / no-process-table rules:
   the cwd pill keeps `#{b:pane_path}` (OSC 7) and Core's nvim-gated `pane_current_path`
   segment is intentionally **not** ported. (`psmux/psmux.conf`)
+- **Zebar adopts sketchybar's floating-islands design, and `PARITY.md` now describes it.**
+  The macOS bar had drifted to a 3-island look (transparent bar + bordered panels) without
+  the shared contract being updated, so `PARITY.md` was false for one host. Resolved by
+  **adopting, not reverting**: the bar goes transparent and `.left`/`.center`/`.right` each
+  become a rounded island (`rgba(29,32,47,0.93)` fill, 2px rim, r=9) accented blue/magenta/
+  green. Weather moves into the left island (stable-width, non-urgent); two grey `│`
+  separators chunk the right island into I/O · load · power, each gated on its own group so
+  a provider-startup transient can't leave a stray separator leading the island. `PARITY.md`
+  (identical copy in `dotfiles-MacBook`) rewritten to match: three islands, weather left,
+  transparent bar geometry, blur off, purple un-reserved and orange added to the palette.
+  **Not render-verified on a Windows host** — reload Zebar and eyeball.
+  (`desktop/zebar/vanilla-clear/`, `desktop/PARITY.md`)
+- **psmux bar is chip-less.** Dropped the rounded pill caps (`@cap_l`/`@cap_r`) from the
+  session / cwd / clock / IP segments in favour of plain coloured icon+text on the
+  transparent bar — matching sketchybar, Zebar, and `PARITY.md`'s "items are chip-less"
+  spec. Also fixes the prefix and copy-mode glyphs being clipped by the cap they sat
+  against. (`psmux/psmux.conf`, `psmux/scripts/psmux-netinfo.ps1`)
+- **Default psmux session renamed `main` → `Gerrrt`** — both the `30-windows.ps1` auto-launch
+  and the `mux` verb default in `32-psmux.ps1`, with the docs/comments that still said `main`
+  updated to match. (`psmux/`, `docs/TOOLS.md`, `TERMINAL_WORKFLOW_GUIDE.md`)
+- **Zebar weather reads °F** instead of °C (`fahrenheitTemp`).
+  (`desktop/zebar/vanilla-clear/vanilla-clear.html`)
+- **Zebar workspace pills match sketchybar's `aerospace.sh`.** Only the _focused_ workspace
+  is highlighted (blue background, dark text); every other one is a plain grey number with no
+  chip — GlazeWM's `.displayed` distinction is deliberately dropped for macOS parity, since
+  aerospace shows only the single focused workspace. (`desktop/zebar/vanilla-clear/styles.css`)
+- **Zebar spacing and font tuning from live use on a large external monitor.** `--item-gap`
+  20px → 8px to match sketchybar's per-item padding (`padding_left` 4 + `padding_right` 4);
+  left-island items dropped from a 16px to an 8px margin so both islands read at the same
+  density; `--bar-font-size` 16px → 18px, since sketchybar's ~17pt suits a laptop panel but
+  reads too small on a large panel (still fits the 28px island; 20px is the next comfortable
+  step). (`desktop/zebar/vanilla-clear/styles.css`)
 
 ### Fixed
 
 - **psmux tabs no longer drift off-center — `status-justify absolute-centre`.** Plain
-  `centre` (Core's value) centers the window list in the gap *between* `status-left` and
+  `centre` (Core's value) centers the window list in the gap _between_ `status-left` and
   `status-right`, so the host's variable-width session pill (wider while prefix is active)
   and the `#{b:pane_path}` cwd in `status-right` pushed the tabs off the true middle —
   most visibly as a jump when a pane running nvim widened the right float. Switched to
   `absolute-centre`, which anchors the tabs to the bar's absolute center regardless of
   either float's width. Deliberate divergence from Core's `centre` (see `docs/PORTING-NOTES.md`);
-  probed on psmux 3.3.7. (`psmux/psmux.conf`)
+  probed on psmux 3.3.7. This is the real fix for the tab-shifting the equal-width prefix
+  cell below was working around. (`psmux/psmux.conf`)
+- **psmux IP / VPN pill rendered blank.** Two distinct causes, found in that order. First,
+  `psmux.conf` ran `set -gq @vpn_pill ""`, which clobbered the refresher's poked value on
+  every `source-file` reload — removed, so `#{@vpn_pill}` persists what the refresher sets.
+  The segment still rendered empty, because the option was poked as a single **pre-styled**
+  string (`'#[fg=#9ece6a,bold]<glyph> <ip>'`) and an option _value_ embedding a `#[…]` style
+  run is not re-interpreted when the format expands it. That's why `psmux-pill-status` showed
+  a populated cache (a plain file write, a separate code path) while the bar stayed empty.
+  Split the transport to mirror the proven `@tn_*` colour pattern: `@vpn_pill` carries plain
+  text only, `@vpn_fg` carries the accent hex, applied in `status-left` as
+  `#[fg=#{@vpn_fg}]#{@vpn_pill}`. Only the colour is defaulted in the conf (so it's never
+  empty on first paint); defaulting the _text_ is what caused the original clobber.
+  (`psmux/psmux.conf`, `psmux/scripts/psmux-netinfo.ps1`)
+- **psmux prefix indicator style leaked into the window tabs.** A `#[default]` reset after
+  `#{@vpn_pill}` stops the pill's bold/fg bleeding into the tabs. The indicator was also
+  widened to an equal-width padded cell (` 󰠠 ` / idle `   `) so its branches couldn't shift
+  the tabs — kept for stable width, though `absolute-centre` above is what actually holds
+  the tabs still. (`psmux/psmux.conf`)
+- **psmux nvim cwd jammed against the clock.** Two passes: the `status-right` cwd↔clock gap
+  sat inside a `#{?}` branch and psmux trims in-branch trailing spaces, so it was moved
+  outside the branch — then widened (6 → 12 spaces) once the branch fix made the gap
+  actually render and it was still too tight to read. (`psmux/psmux.conf`)
 - **psmux config warning: `unknown option 'monitor-bell'`.** psmux 3.3.7 doesn't implement
   `monitor-bell` at all — its CLI `setw`/`set` returns exit 0 (so the capability probe was a
   false positive) but the config parser rejects it on load. Removed the setting;
