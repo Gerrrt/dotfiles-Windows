@@ -77,8 +77,8 @@ running it. Per-change detail below._
   (`windows-terminal/settings.json`)
 - **psmux status bar → Core's centered floating-island look.** Ported Core `tmux.conf`'s
   island redesign to `psmux/psmux.conf`: a 2-line, **centered**, **transparent** bar
-  (`status 2` + blank `status-format[1]`, `status-justify centre`, `status-style
-  bg=default`, `bg=default` pill caps + pane borders) with flat **underlined** window tabs
+  (`status 2` + blank `status-format[1]`, `status-justify centre` — later `absolute-centre`,
+  see Fixed — `status-style bg=default`, `bg=default` pill caps + pane borders) with flat **underlined** window tabs
   and `monitor-activity` **•** dots for unseen output (psmux has no `monitor-bell`) — replacing the
   old left-justified opaque-pill bar. All five psmux features were probed as supported
   (psmux 3.3.7) before porting. Stays within psmux's no-shell-out / no-process-table rules:
@@ -119,6 +119,15 @@ running it. Per-change detail below._
 
 ### Fixed
 
+- **psmux tabs no longer drift off-center — `status-justify absolute-centre`.** Plain
+  `centre` (Core's value) centers the window list in the gap _between_ `status-left` and
+  `status-right`, so the host's variable-width session pill (wider while prefix is active)
+  and the `#{b:pane_path}` cwd in `status-right` pushed the tabs off the true middle —
+  most visibly as a jump when a pane running nvim widened the right float. Switched to
+  `absolute-centre`, which anchors the tabs to the bar's absolute center regardless of
+  either float's width. Deliberate divergence from Core's `centre` (see `docs/PORTING-NOTES.md`);
+  probed on psmux 3.3.7. This is the real fix for the tab-shifting the equal-width prefix
+  cell below was working around. (`psmux/psmux.conf`)
 - **psmux IP / VPN pill rendered blank.** Two distinct causes, found in that order. First,
   `psmux.conf` ran `set -gq @vpn_pill ""`, which clobbered the refresher's poked value on
   every `source-file` reload — removed, so `#{@vpn_pill}` persists what the refresher sets.
@@ -131,13 +140,15 @@ running it. Per-change detail below._
   `#[fg=#{@vpn_fg}]#{@vpn_pill}`. Only the colour is defaulted in the conf (so it's never
   empty on first paint); defaulting the _text_ is what caused the original clobber.
   (`psmux/psmux.conf`, `psmux/scripts/psmux-netinfo.ps1`)
-- **psmux prefix indicator shoved the centered tabs, and its style leaked into them.** The
-  prefix/mode indicator is now a wider padded cell (` 󰠠 ` / idle `   `) so every branch is the
-  same width and the tabs don't shift, and a `#[default]` reset after `#{@vpn_pill}` stops the
-  pill's bold/fg bleeding into the window tabs. (`psmux/psmux.conf`)
-- **psmux nvim cwd jammed against the clock.** The `status-right` cwd↔clock gap sat inside a
-  `#{?}` branch, and psmux trims in-branch trailing spaces; moved outside the branch.
-  (`psmux/psmux.conf`)
+- **psmux prefix indicator style leaked into the window tabs.** A `#[default]` reset after
+  `#{@vpn_pill}` stops the pill's bold/fg bleeding into the tabs. The indicator was also
+  widened to an equal-width padded cell (` 󰠠 ` / idle `   `) so its branches couldn't shift
+  the tabs — kept for stable width, though `absolute-centre` above is what actually holds
+  the tabs still. (`psmux/psmux.conf`)
+- **psmux nvim cwd jammed against the clock.** Two passes: the `status-right` cwd↔clock gap
+  sat inside a `#{?}` branch and psmux trims in-branch trailing spaces, so it was moved
+  outside the branch — then widened (6 → 12 spaces) once the branch fix made the gap
+  actually render and it was still too tight to read. (`psmux/psmux.conf`)
 - **psmux config warning: `unknown option 'monitor-bell'`.** psmux 3.3.7 doesn't implement
   `monitor-bell` at all — its CLI `setw`/`set` returns exit 0 (so the capability probe was a
   false positive) but the config parser rejects it on load. Removed the setting;
