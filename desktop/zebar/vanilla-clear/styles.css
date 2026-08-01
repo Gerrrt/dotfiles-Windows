@@ -25,7 +25,9 @@
    >= --bar-height + 2*--bar-gap or the pill clips. Seeded to approximate the
    Mac's current tuned look; px<->pt across DPI isn't exact, so fine-tune live. */
 :root {
-  --bar-font-size: 16px; /* body text/glyph size (sketchybar --default …:17.0) */
+  /* Bumped from 16px: sketchybar's laptop-panel sizing reads too small on large
+     external monitors. Fits the 28px island; 20px is the next comfortable step. */
+  --bar-font-size: 18px; /* body text/glyph size */
   --bar-height: 36px; /* painted pill height (sketchybar --bar height=36) */
   --bar-gap: 8px; /* float gap top/sides (sketchybar margin=8 / y_offset) */
   --bar-radius: 9px; /* island corner radius (sketchybar corner_radius=9) */
@@ -244,7 +246,7 @@ i {
 /* Weather → orange (matches sketchybar weather.sh); lives in the left island now. */
 .weather {
   color: var(--tn-orange);
-  margin-left: 16px;
+  margin-left: 8px;
 }
 
 .weather i {
@@ -256,7 +258,7 @@ i {
 .caffeine {
   display: flex;
   align-items: center;
-  margin-left: 16px;
+  margin-left: 8px;
   background: transparent;
   border: none;
   padding: 0;
@@ -282,7 +284,7 @@ i {
 .pomodoro {
   display: flex;
   align-items: center;
-  margin-left: 16px;
+  margin-left: 8px;
 }
 
 .pomodoro .label {
