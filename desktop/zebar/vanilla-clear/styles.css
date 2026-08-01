@@ -25,7 +25,9 @@
    >= --bar-height + 2*--bar-gap or the pill clips. Seeded to approximate the
    Mac's current tuned look; px<->pt across DPI isn't exact, so fine-tune live. */
 :root {
-  --bar-font-size: 18px; /* body text/glyph size — bumped from 16px: sketchybar's 17pt suits a laptop panel, but on large external monitors the bar reads too small. Fits the 28px island comfortably; nudge toward 20px if you want it bigger. */
+  /* Bumped from 16px: sketchybar's laptop-panel sizing reads too small on large
+     external monitors. Fits the 28px island; 20px is the next comfortable step. */
+  --bar-font-size: 18px; /* body text/glyph size */
   --bar-height: 36px; /* painted pill height (sketchybar --bar height=36) */
   --bar-gap: 8px; /* float gap top/sides (sketchybar margin=8 / y_offset) */
   --bar-radius: 9px; /* island corner radius (sketchybar corner_radius=9) */
