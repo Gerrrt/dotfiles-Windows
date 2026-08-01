@@ -69,6 +69,14 @@ below._
 
 ### Fixed
 
+- **psmux tabs no longer drift off-center — `status-justify absolute-centre`.** Plain
+  `centre` (Core's value) centers the window list in the gap *between* `status-left` and
+  `status-right`, so the host's variable-width session pill (wider while prefix is active)
+  and the `#{b:pane_path}` cwd in `status-right` pushed the tabs off the true middle —
+  most visibly as a jump when a pane running nvim widened the right float. Switched to
+  `absolute-centre`, which anchors the tabs to the bar's absolute center regardless of
+  either float's width. Deliberate divergence from Core's `centre` (see `docs/PORTING-NOTES.md`);
+  probed on psmux 3.3.7. (`psmux/psmux.conf`)
 - **psmux config warning: `unknown option 'monitor-bell'`.** psmux 3.3.7 doesn't implement
   `monitor-bell` at all — its CLI `setw`/`set` returns exit 0 (so the capability probe was a
   false positive) but the config parser rejects it on load. Removed the setting;

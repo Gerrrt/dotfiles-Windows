@@ -177,7 +177,11 @@ prompt work. Split by what can be verified off-host vs. what needs a Windows box
   render-verified on a Windows host** — CI lints it (PSScriptAnalyzer); eyeball it on
   first pull. (`powershell/core/10-tools.ps1`)
 - **psmux centered floating-island bar** — port of Core `tmux.conf`'s `19d7a98` island
-  redesign: `status 2` + blank `status-format[1]` (2-line), `status-justify centre`,
+  redesign: `status 2` + blank `status-format[1]` (2-line), `status-justify
+  absolute-centre` (**divergence from Core**, which uses plain `centre`: the host's
+  variable-width session pill — wider when prefix is active — and the `#{b:pane_path}`
+  cwd in `status-right` shove `centre`-justified tabs off the true middle; `absolute-centre`
+  anchors them independent of both floats),
   transparent `status-style bg=default` + `bg=default` pill caps and pane borders,
   `monitor-activity` with activity **•** dots in the tabs (psmux has no `monitor-bell`), and flat
   **underlined** window tabs instead of pills. All five features were probed as supported
