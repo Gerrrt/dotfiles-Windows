@@ -173,12 +173,98 @@ vim.api.nvim_create_autocmd("BufWritePre", {
   end,
 })
 
+-- Python: buffer-local pytest runners via uv. Plugin-free ON PURPOSE — this config avoids the
+-- heavy test-runner stack (no neotest, matching the no-dap-ui/no-toggleterm stance elsewhere); a
+-- split terminal running `uv run pytest` covers the daily "run this" loop and complements the DAP
+-- "debug test method" (<leader>dm, plugins/nvim-dap.lua). BUFFER-LOCAL (attached on FileType
+-- python) so the <leader>t prefix stays free for every other filetype.
+--
+-- GATED on `uv` being present — like the uvr/uvs zsh aliases (HAVE_UV). Without it the maps would
+-- only ever advertise a command that opens a failed terminal, so we simply don't create them.
+-- Re-probed per attach, so installing uv mid-session takes effect on the next Python buffer.
+local py_test_group = vim.api.nvim_create_augroup("PyTestRunner", { clear = true })
+vim.api.nvim_create_autocmd("FileType", {
+  group = py_test_group,
+  pattern = "python",
+  callback = function(args)
+    if vim.fn.executable("uv") ~= 1 then
+      return
+    end
+    local function pytest(target)
+      vim.cmd("update") -- write a modified buffer first (like vim-test) so pytest sees latest edits
+      -- Run in the uv PROJECT ROOT, not Neovim's cwd. autochdir is off (config/options.lua), so a
+      -- file opened from elsewhere would otherwise make uv resolve the wrong project. Same root
+      -- markers the lualine venv component uses (plugins/lualine-nvim.lua).
+      local root = vim.fs.root(args.buf, { { "uv.lock", "pyproject.toml" }, ".git" }) or vim.fn.getcwd()
+      -- argv FORM, never a shell string: a filename with spaces or shell metacharacters (`;`, `&`,
+      -- …) is passed as one literal argument and cannot be re-parsed or injected — which
+      -- fnameescape() (Ex-syntax only) would NOT have prevented through `:terminal`'s shell.
+      local argv = { "uv", "run", "pytest" }
+      if target then
+        argv[#argv + 1] = target
+      end
+      -- Fresh scratch buffer in a bottom split, then attach the terminal job to it.
+      vim.cmd("botright split | enew | resize 15")
+      local jid = vim.fn.jobstart(argv, { cwd = root, term = true })
+      if jid <= 0 then
+        vim.notify("Test: failed to start `uv run pytest`", vim.log.levels.ERROR, { title = "Test" })
+        return
+      end
+      -- The startinsert below leaves you in terminal mode, where this split swallows Core's
+      -- <C-h/j/k/l> exactly as Claude's does — and since `:q` needs normal mode, even CLOSING it
+      -- requires <C-\><C-n> first. Give it the same escape hatch; see utils/term.lua for why the
+      -- maps ride <M-…> rather than widening the navigator's own keys. jobstart(term=true) leaves
+      -- the terminal buffer current, so this is the buffer we just created.
+      require("gerrrt.utils.term").map_navigation(vim.api.nvim_get_current_buf(), "test output")
+      vim.cmd("startinsert") -- so output scrolls live
+    end
+    local function map(lhs, fn, desc)
+      vim.keymap.set("n", lhs, fn, { buffer = args.buf, silent = true, desc = desc })
+    end
+    map("<leader>tt", function()
+      pytest(nil)
+    end, "Test: pytest (whole suite)")
+    map("<leader>tf", function()
+      -- Resolve the path NOW, before the split changes the current buffer.
+      pytest(vim.fn.expand("%:p"))
+    end, "Test: pytest (current file)")
+  end,
+})
+
 -- on attach function shortcuts
 local lsp_on_attach_group = vim.api.nvim_create_augroup("LspMappings", { clear = true })
 vim.api.nvim_create_autocmd("LspAttach", {
   group = lsp_on_attach_group,
   callback = on_attach,
 })
+
+-- Teach Neovim the `buf-config` filetype that buf_ls advertises (servers/buf_ls.lua lists
+-- `filetypes = { "proto", "buf-config" }`). Nothing in stock Neovim maps buf's own config files to
+-- that name, so two things were true at once: `:checkhealth vim.lsp` flagged `buf-config` as an
+-- "Unknown filetype" (its known-set comes from vim.filetype._get_known_filetypes(), which DOES read
+-- vim.filetype.add() registrations), AND buf_ls never attached to buf.yaml / buf.gen.yaml because
+-- they stayed `yaml`. Mapping the buf-specific filenames fixes both: the ft becomes known (the
+-- health warning is gone) and buf_ls now serves these files with buf-aware completion/diagnostics —
+-- the language server's intended job. The set is buf's full v2 config surface (buf.yaml,
+-- buf.gen.yaml, buf.work.yaml, buf.policy.yaml) plus the buf.lock dependency lock. They no longer
+-- load as `yaml`, so yamlls steps aside here (buf_ls is the better fit for buf config).
+vim.filetype.add({
+  filename = {
+    ["buf.yaml"] = "buf-config",
+    ["buf.gen.yaml"] = "buf-config",
+    ["buf.work.yaml"] = "buf-config",
+    ["buf.policy.yaml"] = "buf-config",
+    ["buf.lock"] = "buf-config",
+  },
+})
+-- Highlighting: these are all YAML, so alias the buf-config filetype to the yaml PARSER rather than
+-- starting treesitter ourselves. plugins/nvim-treesitter.lua (main branch) drives highlighting from
+-- its OWN FileType handler via `vim.treesitter.language.get_lang(ft)` → start-if-installed; with
+-- this register call get_lang resolves buf-config→yaml, so that existing install/start lifecycle
+-- lights these buffers up — including its already-loaded-buffer sweep and a yaml parser that only
+-- lands after a fresh-box ensure_installed pass. Starting the parser here on FileType instead would
+-- miss the not-yet-installed case (FileType fires before the parser arrives, and never retries).
+vim.treesitter.language.register("yaml", "buf-config")
 
 -- custom options for text/markdown files
 local markdown_options = vim.api.nvim_create_augroup("MarkdownOptions", { clear = true })
