@@ -8,7 +8,7 @@ so entries are grouped by theme rather than strict semver releases.
 
 _Nothing yet._
 
-## [v1.5.0] - 2026-08-01
+## [v1.5.0] - 2026-08-02
 
 _**Core → Windows parity pass (2026-07).** A focused sweep to close the drift that had
 built up between recent `dotfiles-core` / `dotfiles-MacBook` work and the Windows host,
