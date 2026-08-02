@@ -22,6 +22,10 @@ return {
 			align = "left",
 		},
 		spec = {
+			-- Only present when the `claude` binary is — the plugin spec is `cond`-gated, so on a box
+			-- without the CLI this group renders empty. Declared anyway so the prefix has a name
+			-- wherever it does appear, same reasoning as <leader>t below.
+			{ "<leader>a", group = "ai / claude" },
 			{ "<leader>b", group = "buffer" },
 			{ "<leader>c", group = "code / LSP" },
 			{ "<leader>d", group = "debug (dap)" },
@@ -31,6 +35,10 @@ return {
 			{ "<leader>n", group = "npm (package.json)" },
 			{ "<leader>q", group = "session" },
 			{ "<leader>s", group = "split / window" },
+			-- normal mode only, and only really populated on python buffers (buffer-local pytest maps
+			-- attached on FileType python — config/autocmds.lua). Declared globally so the prefix has a
+			-- name wherever it appears rather than rendering as a bare unnamed group.
+			{ "<leader>t", group = "test", mode = "n" },
 			{ "<leader>u", group = "ui / toggles" },
 			{ "<leader>w", group = "which-key" },
 			{ "<leader>x", group = "trouble / lists" },

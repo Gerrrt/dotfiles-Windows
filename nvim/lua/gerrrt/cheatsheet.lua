@@ -104,6 +104,10 @@ M.sections = {
 		{ "]t / [t", "Next / prev todo comment" },
 		{ "<leader>fx / fX", "Diagnostics doc / workspace" },
 		{ "<leader>fs / fw", "Symbols doc / workspace" },
+		-- Inside the picker. <Tab>/<A-a> are fzf's own multi-select; <C-y> is ours
+		-- (plugins/fzf-lua.lua) and needs the `claude` CLI, otherwise it just says so.
+		{ "<Tab> / <A-a>", "Mark one / toggle all" },
+		{ "<C-y>", "Send marked to Claude" },
 	},
 	{
 		"LSP & Code",
@@ -141,6 +145,12 @@ M.sections = {
 		{ "<leader>dR", "Rust debuggables (start)" },
 	},
 	{
+		"Test (python)",
+		{ "<leader>tt", "pytest: whole suite (uv run)" },
+		{ "<leader>tf", "pytest: current file (uv run)" },
+		{ "<leader>dm", "Debug test method (dap)" },
+	},
+	{
 		"Trouble & Lists",
 		{ "<leader>xx", "Workspace diagnostics" },
 		{ "<leader>xX", "Buffer diagnostics" },
@@ -168,6 +178,35 @@ M.sections = {
 		{ "<leader>gv / gV", "Diffview open / close" },
 		{ "<leader>gH / gL", "History: file / repo" },
 		{ "<leader>gy / gY", "Permalink: yank / open" },
+	},
+	{
+		-- claudecode.nvim (plugins/claudecode-nvim.lua). The whole spec is gated on the `claude`
+		-- binary, so on a box without the CLI these keys do not exist — this card documents the
+		-- surface you get once it does. `<leader>as` is deliberately overloaded: visual = send
+		-- selection, nvim-tree/oil buffer = add that file.
+		"AI (Claude Code)",
+		{ "<leader>ac", "Toggle Claude" },
+		{ "<leader>af", "Focus Claude" },
+		{ "<leader>ar / aC", "Resume / continue session" },
+		{ "<leader>ab", "Add buffer to context" },
+		{ "<leader>as", "Send selection (v) / add file" },
+		{ "<leader>aa / ad", "Accept / deny diff" },
+		{ "<leader>am", "Select model" },
+		{ "<leader>aS", "Server status" },
+		-- Getting OUT of Claude's split is the "Terminal buffers" card below, not here: it is the
+		-- same answer for the pytest split, and the whole panel is visible at once so a second copy
+		-- would only be a thing to keep in step.
+	},
+	{
+		-- utils/term.lua. Applies to BOTH terminals Core opens — Claude's split
+		-- (plugins/claudecode-nvim.lua) and the pytest split (config/autocmds.lua). Terminal mode
+		-- forwards every key to the program inside, so Core's <C-h/j/k/l> never reach Neovim;
+		-- <C-\><C-n> is Neovim's one reserved way out and <M-h/j/k/l> does that and navigates in one
+		-- go. Note `:q` needs normal mode too, so closing one also starts with <C-\><C-n>.
+		"Terminal buffers",
+		{ "<C-\\><C-n>", "Exit terminal mode" },
+		{ "<M-h/j/k/l>", "Exit + navigate" },
+		{ "i / a", "Back to typing" },
 	},
 	{
 		"Folds (ufo)",
