@@ -12,8 +12,9 @@
 # bar now reads a pre-written file with a cheap `type`; this script is what writes
 # that file. Run it OUT of band: `psmux-pill-enable` (powershell/os/33-psmux-pill.ps1)
 # arms a per-session timer that runs this every 60s while a psmux pane is open
-# (no Scheduled Task, no elevation). The styled pill is also emitted to stdout, so
-# the script still works standalone.
+# (no Scheduled Task, no elevation). The pill TEXT is also emitted to stdout so the
+# script works standalone — plain text, NOT a styled #[…] run. Pill() stopped emitting
+# style when the colour moved to @vpn_fg; see its note for why the two must stay split.
 #
 # Deliberately tolerant (SilentlyContinue): a status helper must never hard-fail.
 # This is the bash original's Linux `ip`/macOS `ipconfig` logic re-expressed with
@@ -25,7 +26,7 @@ param(
     # pill is TUNNEL-ONLY, so it stays invisible unless you're actually on a VPN —
     # high signal, low noise. Pass -AllNetworks for the old always-show-LAN feel.
     [switch]$AllNetworks,
-    # Where the styled pill is cached for the status bar to read with a cheap
+    # Where the pill text is cached for the status bar to read with a cheap
     # `type`. Must match the path the status-right segment uses in psmux.conf.
     [string]$OutFile = (Join-Path $env:LOCALAPPDATA 'dotfiles\psmux-netinfo.pill')
 )
@@ -154,14 +155,17 @@ try {
 # away. In argument position a bare @name is PowerShell's SPLATTING operator, not a
 # literal: `psmux set -g @vpn_pill $text` splats the (undefined) $vpn_pill and the
 # token is dropped from the command line entirely, so psmux receives `set -g <text>`
-# — a single positional, which its set handler silently discards. Exit code 0, no
-# stderr, option never set. That was the "pill never shows" bug: the detection above
-# worked and the cache file was correct, but nothing ever reached the bar.
+# — a single positional, which its set handler silently discards (psmux/psmux#535: exit)
+# code 0, nothing on stderr, option never set). That was the "pill never shows" bug: the
+# detection above worked and the cache file was correct, but nothing ever reached the bar.
+# The quoting stays correct regardless of #535 — that issue only asks psmux to TELL you
+# when it drops a set, which would have made this a two-minute diagnosis instead of months.
 #
 # ⚠ Clearing needs `set -gu` (UNSET), not `set -g <opt> ''`. An empty-string argument is
 # dropped on the way to the exe, so the empty form arrives as a single positional and is
-# discarded exactly like the splat above — the previous pill would stay on the bar
-# forever (a dropped tunnel kept showing its old IP). Unset renders as nothing.
+# discarded by the same silent path as the splat above (psmux/psmux#535) — the previous
+# pill would stay on the bar forever (a dropped tunnel kept showing its old IP). Unset
+# renders as nothing, and stays correct whatever #535 decides to do about warnings.
 try {
     & psmux set -g '@vpn_fg' $script:LastFg 2>$null
     if ([string]::IsNullOrEmpty($script:LastPill)) {

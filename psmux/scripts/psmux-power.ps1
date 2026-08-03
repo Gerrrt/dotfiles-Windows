@@ -25,8 +25,10 @@
 # user option instead: this script pokes @pwr_pill / @pwr_fg, and the bar reads them
 # with a free in-process hashmap lookup. Run it OUT of band — `psmux-pill-enable`
 # (powershell/os/33-psmux-pill.ps1) arms a per-session timer that runs this every
-# 60s alongside psmux-netinfo.ps1. The styled pill is also emitted to stdout, so the
-# script still works standalone.
+# 60s alongside psmux-netinfo.ps1. The pill TEXT is also emitted to stdout so the script
+# works standalone — plain text, NOT a styled #[…] run: the colour cannot travel inside the
+# value (an option value carrying a style run isn't re-interpreted on expansion), which is
+# exactly why it goes in @pwr_fg instead. Read the two together to reconstruct the segment.
 #
 # Deliberately tolerant (SilentlyContinue): a status helper must never hard-fail.
 # ──────────────────────────────────────────────────────────────────────────────
@@ -128,7 +130,8 @@ $text
 # ⚠ THE QUOTES AROUND '@pwr_fg' / '@pwr_pill' ARE LOAD-BEARING — see the long note in
 # psmux-netinfo.ps1. In argument position a bare @name is PowerShell's SPLATTING
 # operator, so `psmux set -g @pwr_pill $text` drops the option name entirely and the
-# set silently no-ops (exit 0, no stderr). That bug hid the VPN pill for months.
+# set silently no-ops (exit 0, no stderr — psmux/psmux#535). That bug hid the VPN pill
+# for months.
 try {
     & psmux set -g '@pwr_fg'   $fg   2>$null
     & psmux set -g '@pwr_pill' $text 2>$null
