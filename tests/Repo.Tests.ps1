@@ -298,8 +298,10 @@ Describe 'psmux user-option pokes' {
                 $n = 0
                 foreach ($line in (Get-Content -LiteralPath $_.FullName)) {
                     $n++
-                    # `psmux set ...` / `psmux set-option ...`, ignoring commented-out lines.
-                    if ($line -match '(?<!#[^\r\n]{0,200})psmux\s+set(-option)?\s' -and $line.TrimStart() -notlike '#*') {
+                    # `psmux set ...` / `psmux set-option ...`, ignoring commented-out lines
+                    # (the comment guard is the -notlike below; this file and its neighbours
+                    # quote plenty of example pokes in prose that must not be scanned).
+                    if ($line -match 'psmux\s+set(-option)?\s' -and $line.TrimStart() -notlike '#*') {
                         [pscustomobject]@{ Where = "${rel}:${n}"; Text = $line.Trim() }
                     }
                 }

@@ -12,8 +12,9 @@
 # bar now reads a pre-written file with a cheap `type`; this script is what writes
 # that file. Run it OUT of band: `psmux-pill-enable` (powershell/os/33-psmux-pill.ps1)
 # arms a per-session timer that runs this every 60s while a psmux pane is open
-# (no Scheduled Task, no elevation). The styled pill is also emitted to stdout, so
-# the script still works standalone.
+# (no Scheduled Task, no elevation). The pill TEXT is also emitted to stdout so the
+# script works standalone — plain text, NOT a styled #[…] run. Pill() stopped emitting
+# style when the colour moved to @vpn_fg; see its note for why the two must stay split.
 #
 # Deliberately tolerant (SilentlyContinue): a status helper must never hard-fail.
 # This is the bash original's Linux `ip`/macOS `ipconfig` logic re-expressed with
@@ -25,7 +26,7 @@ param(
     # pill is TUNNEL-ONLY, so it stays invisible unless you're actually on a VPN —
     # high signal, low noise. Pass -AllNetworks for the old always-show-LAN feel.
     [switch]$AllNetworks,
-    # Where the styled pill is cached for the status bar to read with a cheap
+    # Where the pill text is cached for the status bar to read with a cheap
     # `type`. Must match the path the status-right segment uses in psmux.conf.
     [string]$OutFile = (Join-Path $env:LOCALAPPDATA 'dotfiles\psmux-netinfo.pill')
 )
