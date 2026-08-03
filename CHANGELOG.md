@@ -43,7 +43,14 @@ so entries are grouped by theme rather than strict semver releases.
   discarded the whole command — exit 0, nothing on stderr, option never set. Every other layer
   (detection, cache file, timer, `psmux.conf`) was working, which is why it survived so long.
   Fixed by quoting `'@vpn_pill'` / `'@vpn_fg'`. (`psmux/scripts/psmux-netinfo.ps1`)
-- **A dropped tunnel left a stale IP on the bar.** Clearing the pill used
+- **A config reload repainted a live pill in the wrong colour.** `@vpn_fg` was defaulted with a
+  plain `set -g`, so every `prefix + r` overwrote whatever the refresher last poked. Because the
+  pill's *text* is never defaulted, the two halves then disagreed until the next tick — up to a
+  full refresh interval — and these pills encode their state in the colour: an active tunnel kept
+  showing its address in the no-tunnel green, losing the orange that is the entire signal. Both
+  colour options now use `set -og` (only-if-unset), which still guarantees a non-empty colour on
+  first paint. Caught on review of the same mistake in `@pwr_fg`, where it would paint a 15 %
+  battery healthy-green.
   `psmux set -g @vpn_pill ''`, but an empty-string argument is dropped on the way to the exe and
   the set no-ops exactly like the splat above. Clearing now uses `set -gu` (unset).
   `psmux-pill-disable` clears the segment too, instead of only stopping the timer.

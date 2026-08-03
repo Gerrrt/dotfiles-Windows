@@ -159,10 +159,21 @@ Describe 'psmux config' {
         # ...and it must come after the clock, not before it.
         $script:StatusRight.IndexOf('#{@pwr_pill}') | Should -BeGreaterThan $script:StatusRight.IndexOf('%H:%M')
     }
-    It 'defaults @pwr_pill with -o so a config reload cannot clobber a live poke' {
-        # `set -og` is only-if-unset. A plain `set -g` here would overwrite the
-        # refresher's real laptop reading with the desktop placeholder on prefix + r.
-        $script:Conf | Should -Match '(?m)^set -og\s+@pwr_pill'
+    It 'defaults <Opt> with -o so a config reload cannot clobber a live poke' -ForEach @(
+        @{ Opt = '@pwr_pill' }
+        @{ Opt = '@pwr_fg' }
+        @{ Opt = '@vpn_fg' }
+    ) {
+        # `set -og` is only-if-unset. A plain `set -g` overwrites whatever the refresher last
+        # poked, on every prefix + r, and the segment then lies until the next tick (up to a
+        # full refresh interval).
+        #
+        # This applies to the COLOUR options as much as the text: these pills encode their
+        # state in the colour, so a clobbered @pwr_fg paints a 15% battery healthy-green and a
+        # clobbered @vpn_fg paints a live tunnel in the no-tunnel colour. @vpn_pill is the one
+        # option with no default at all — see psmux.conf.
+        $script:Conf | Should -Match "(?m)^set -og\s+$([regex]::Escape($Opt))\b"
+        $script:Conf | Should -Not -Match "(?m)^set -g\s+$([regex]::Escape($Opt))\b"
     }
     It 'spaces its bar gaps with #{p<n>:}, which psmux will not collapse' {
         # psmux parses option values as split_whitespace() + join(" "), so ANY run of real
