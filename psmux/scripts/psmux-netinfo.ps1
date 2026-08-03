@@ -154,14 +154,17 @@ try {
 # away. In argument position a bare @name is PowerShell's SPLATTING operator, not a
 # literal: `psmux set -g @vpn_pill $text` splats the (undefined) $vpn_pill and the
 # token is dropped from the command line entirely, so psmux receives `set -g <text>`
-# — a single positional, which its set handler silently discards. Exit code 0, no
-# stderr, option never set. That was the "pill never shows" bug: the detection above
-# worked and the cache file was correct, but nothing ever reached the bar.
+# — a single positional, which its set handler silently discards (psmux/psmux#535: exit)
+# code 0, nothing on stderr, option never set). That was the "pill never shows" bug: the
+# detection above worked and the cache file was correct, but nothing ever reached the bar.
+# The quoting stays correct regardless of #535 — that issue only asks psmux to TELL you
+# when it drops a set, which would have made this a two-minute diagnosis instead of months.
 #
 # ⚠ Clearing needs `set -gu` (UNSET), not `set -g <opt> ''`. An empty-string argument is
 # dropped on the way to the exe, so the empty form arrives as a single positional and is
-# discarded exactly like the splat above — the previous pill would stay on the bar
-# forever (a dropped tunnel kept showing its old IP). Unset renders as nothing.
+# discarded by the same silent path as the splat above (psmux/psmux#535) — the previous
+# pill would stay on the bar forever (a dropped tunnel kept showing its old IP). Unset
+# renders as nothing, and stays correct whatever #535 decides to do about warnings.
 try {
     & psmux set -g '@vpn_fg' $script:LastFg 2>$null
     if ([string]::IsNullOrEmpty($script:LastPill)) {

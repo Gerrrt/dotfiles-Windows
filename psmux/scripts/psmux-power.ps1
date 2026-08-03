@@ -128,7 +128,8 @@ $text
 # ⚠ THE QUOTES AROUND '@pwr_fg' / '@pwr_pill' ARE LOAD-BEARING — see the long note in
 # psmux-netinfo.ps1. In argument position a bare @name is PowerShell's SPLATTING
 # operator, so `psmux set -g @pwr_pill $text` drops the option name entirely and the
-# set silently no-ops (exit 0, no stderr). That bug hid the VPN pill for months.
+# set silently no-ops (exit 0, no stderr — psmux/psmux#535). That bug hid the VPN pill
+# for months.
 try {
     & psmux set -g '@pwr_fg'   $fg   2>$null
     & psmux set -g '@pwr_pill' $text 2>$null
