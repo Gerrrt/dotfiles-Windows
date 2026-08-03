@@ -78,7 +78,7 @@ function Get-DotfilesHelpData {
     )
     $g['psmux (multiplexer)'] = @(
         @{ Command = 'mux [session]'; Desc = 'attach-or-create a psmux session' }
-        @{ Command = 'psmux-pill-enable / -disable'; Desc = 'operator/VPN status pill' }
+        @{ Command = 'psmux-pill-enable / -disable'; Desc = 'status pills: operator/VPN IP + power' }
     )
     $g['Shell'] = @(
         @{ Command = 'core <verb>';  Desc = 'fleet front door: core doctor / help / version / update (matches Core on Unix)' }

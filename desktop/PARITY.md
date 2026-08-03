@@ -138,3 +138,15 @@ Nerd Fonts webfont. Same icon on both.
 - **power** — collapsed icon expands to lock · sleep · restart · shutdown.
 - **clock + battery** also appear here even though the macOS tmux status bar shows
   them too — a deliberate choice for cross-host parity.
+- **battery on a desktop** — a machine with no battery shows the AC placeholder: a lone
+  green `md-power-plug` 󰚥. The **psmux status bar shows the same placeholder**, right-most in
+  `status-right`, so both Windows bars agree that the host is on AC.
+
+> ⚠ **The psmux bar does NOT use this table's battery scale.** This document is the
+> **desktop-bar** contract — Zebar ↔ sketchybar. The terminal bars are matched to each other
+> instead: `psmux/scripts/psmux-power.ps1` is a port of Core's `tmux/scripts/tmux-battery.sh`
+> and follows *its* scale (green ≥60 / yellow ≥20 / red <20, three level glyphs plus a
+> charging bolt), so the psmux bar and the macOS tmux bar draw the identical pill. The two
+> scales disagree between 40 and 60 % on purpose. The only thing psmux borrows from here is
+> the 󰚥 no-battery placeholder, which Core doesn't draw at all.
+> `tests/Repo.Tests.ps1` pins the psmux side against Core's thresholds.

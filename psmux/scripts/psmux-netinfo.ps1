@@ -145,12 +145,28 @@ try {
 
 # Also poke the pill straight into psmux as a user option, so the status bar can read
 # it with a free in-process lookup (#{@vpn_pill} in psmux.conf's status-left) instead of
-# a #(type) shell-out — the lag-safe transport the retired-pill note recommends. Empty
-# LastPill (no tunnel / no LAN) clears the segment. Harmless if no psmux server is up.
+# a #(type) shell-out — the lag-safe transport the retired-pill note recommends.
 # Poke the colour first, then the text: the bar reads #[fg=#{@vpn_fg}]#{@vpn_pill}, so the
-# colour option should be current before the text it paints appears. Empty text clears the
-# segment. Harmless if no psmux server is up.
+# colour option should be current before the text it paints appears. Harmless if no psmux
+# server is up.
+#
+# ⚠ THE QUOTES AROUND '@vpn_fg' / '@vpn_pill' ARE LOAD-BEARING. Do not "tidy" them
+# away. In argument position a bare @name is PowerShell's SPLATTING operator, not a
+# literal: `psmux set -g @vpn_pill $text` splats the (undefined) $vpn_pill and the
+# token is dropped from the command line entirely, so psmux receives `set -g <text>`
+# — a single positional, which its set handler silently discards. Exit code 0, no
+# stderr, option never set. That was the "pill never shows" bug: the detection above
+# worked and the cache file was correct, but nothing ever reached the bar.
+#
+# ⚠ Clearing needs `set -gu` (UNSET), not `set -g <opt> ''`. An empty-string argument is
+# dropped on the way to the exe, so the empty form arrives as a single positional and is
+# discarded exactly like the splat above — the previous pill would stay on the bar
+# forever (a dropped tunnel kept showing its old IP). Unset renders as nothing.
 try {
-    & psmux set -g @vpn_fg   $script:LastFg   2>$null
-    & psmux set -g @vpn_pill $script:LastPill 2>$null
+    & psmux set -g '@vpn_fg' $script:LastFg 2>$null
+    if ([string]::IsNullOrEmpty($script:LastPill)) {
+        & psmux set -gu '@vpn_pill' 2>$null
+    } else {
+        & psmux set -g '@vpn_pill' $script:LastPill 2>$null
+    }
 } catch { }

@@ -6,7 +6,71 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **psmux power pill — the battery segment the macOS tmux bar has.** New
+  `psmux/scripts/psmux-power.ps1`, rendered **right-most** in `status-right`, which is where
+  Core puts it too (its last slot is `#{@status_right_os}`, the hook each OS repo fills). It is
+  the Windows port of Core's `tmux/scripts/tmux-battery.sh` and uses that scale, so the two
+  *terminal* bars agree: green ≥60 / yellow ≥20 / red <20, with the level glyph swapped for a
+  charging bolt on AC and the colour still tracking the level. **One deliberate divergence** —
+  Core prints nothing when there's no battery, so its segment vanishes on a desktop; here it
+  falls back to Zebar's AC placeholder, a lone green `md-power-plug` 󰚥, since an empty segment
+  reads as a broken pill on a desktop-first host. Power state comes from
+  `SystemInformation.PowerStatus` (one in-process `GetSystemPowerStatus` read), not
+  `Win32_Battery` — a desktop returns nothing from the latter, so "no battery" and "the query
+  failed" would be indistinguishable. Refreshed by the existing in-session timer alongside the
+  VPN pill, so nothing new touches psmux's synchronous render path. `psmux.conf` seeds
+  `@pwr_pill` with `set -og` (only-if-unset) so the desktop plug is right before the first
+  tick, while a `prefix + r` reload can't clobber a live laptop reading.
+  (`psmux/`, `powershell/os/33-psmux-pill.ps1`)
+
+  Note this means the psmux bar and Zebar disagree between 40 and 60 % — deliberately. The
+  bars are matched terminal-to-terminal (psmux ↔ Core tmux) and desktop-to-desktop
+  (Zebar ↔ sketchybar), and those two references use different scales.
+- **Test coverage for the power pill's every state.** The dev box is a desktop, so the laptop
+  branches would otherwise ship unexecuted. `psmux-power.ps1` takes a `-SimulateState` testing
+  seam (no host read, no poke) and `tests/Repo.Tests.ps1` asserts each colour and glyph
+  threshold — including that a charging 15 % battery stays **red**, which is the case a naive
+  "on AC → blue" reading would silently hide.
+
+### Fixed
+
+- **The VPN/IP pill never rendered — a PowerShell splatting bug.** `psmux-netinfo.ps1` poked the
+  bar with `psmux set -g @vpn_pill $text`. In argument position a bare `@name` is PowerShell's
+  **splatting operator**, so the undefined `$vpn_pill` expanded to nothing and the option name
+  was dropped from the command line entirely; psmux received a single positional and silently
+  discarded the whole command — exit 0, nothing on stderr, option never set. Every other layer
+  (detection, cache file, timer, `psmux.conf`) was working, which is why it survived so long.
+  Fixed by quoting `'@vpn_pill'` / `'@vpn_fg'`. (`psmux/scripts/psmux-netinfo.ps1`)
+- **A dropped tunnel left a stale IP on the bar.** Clearing the pill used
+  `psmux set -g @vpn_pill ''`, but an empty-string argument is dropped on the way to the exe and
+  the set no-ops exactly like the splat above. Clearing now uses `set -gu` (unset).
+  `psmux-pill-disable` clears the segment too, instead of only stopping the timer.
+- **Holding the prefix key shoved the IP pill two columns right.** The prefix/mode indicator sits
+  between `#S` and the pill with each branch padded to the same width — but the idle branch was
+  three literal spaces, which psmux's parser collapsed to one (see the next entry), against a
+  prefix branch of `space + glyph + space` that survived as three. The branches are now spaced
+  with `#{p<n>:}` and are five rendered cells each, verified in both directions on a real
+  terminal. A test asserts the three branches stay equal width, since eyeballing this is
+  exactly what failed before.
+- **Multi-space gaps in the status bar were rendering as a single space.** psmux parses option
+  values as `split_whitespace()` + `join(" ")`, so every run of spaces collapses to one, quoted
+  or not — which means the twelve-space cwd→clock gap added in
+  [#163](https://github.com/dotgibson/dotfiles-Windows/pull/163) had never actually widened
+  anything. Bar gaps now use **`#{p<n>:}`**, which pads an empty body at *render* time — after
+  the parser has had its way — and is the same idiom Core's `tmux.conf` already uses
+  (`#{p19:}`), so the two configs now read the same. The session→IP gap is wider as a result,
+  and a test forbids multi-space runs in `status-left`/`status-right` so this can't silently
+  regress. Note `#{p<n>:}` only works written directly in the config: a format arriving via a
+  user option is not re-expanded, which is the same rule that keeps a `#[…]` style run from
+  working inside `@vpn_pill`.
+- **Two stale psmux config tests.** They asserted the pill was read via
+  `#(cmd /c type %LOCALAPPDATA%…)` and passed only because that string still appeared in the
+  *comment block* describing the retired transport — they had stopped testing anything real.
+  Repointed at the live `@vpn_pill` / `@pwr_pill` segments, plus a static guard that every
+  `psmux set` in the repo quotes its `@option` name, since the splatting bug above is invisible
+  at runtime. (`tests/Repo.Tests.ps1`)
 
 ## [v1.5.0] - 2026-08-02
 
