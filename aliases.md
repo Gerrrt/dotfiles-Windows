@@ -258,17 +258,19 @@ Each function is only defined if its backing tool (`age` / `croc`) is installed 
 | `tbranch` | Fuzzy git branch switcher |
 | `tenv` | Fuzzy environment variable picker |
 
-## psmux Pill (`33-psmux-pill.ps1`)
+## psmux Pills (`33-psmux-pill.ps1`)
 
-The operator/VPN status pill shown in the psmux status bar. File-backed and
-refreshed by an in-session timer (no scheduled task, no elevation needed).
+The psmux status-bar pills — the operator/VPN IP on the left, the power/battery
+segment right-most — refreshed by one in-session timer (no scheduled task, no
+elevation needed). Values are poked into psmux as user options so the bar never
+spawns a process while drawing.
 
 | Function | Purpose |
 |----------|----------|
-| `psmux-pill-now [-AllNetworks]` | Refresh the cache file once, synchronously |
-| `psmux-pill-enable [-AllNetworks]` | Turn the pill on — persists (new panes auto-start it) and arms the refresher now; `-AllNetworks` also shows the plain-LAN IP when no tunnel is up |
-| `psmux-pill-disable` | Stop the refresher, drop the opt-in, blank the segment |
-| `psmux-pill-status` | Show refresher state (enabled / armed this session / inside mux) + the current cached pill |
+| `psmux-pill-now [-AllNetworks]` | Refresh both pills once, synchronously |
+| `psmux-pill-enable [-AllNetworks]` | Turn the IP pill on — persists (new panes auto-start it) and arms the refresher now; `-AllNetworks` also shows the plain-LAN IP when no tunnel is up |
+| `psmux-pill-disable` | Stop the refresher, drop the opt-in, clear the IP segment (the power pill stays — it's a parity segment, not an operator indicator) |
+| `psmux-pill-status` | Show refresher state (enabled / armed this session / inside mux) and what the bar is actually reading for both pills |
 
 ## Maintenance (`40-maint.ps1`)
 

@@ -80,8 +80,8 @@ The dispatcher globs `core/*.ps1`, sorts by name, dot-sources each; then the sam
 - **`30-windows.ps1`** — scoop/winget verbs (`scu`/`sci`/`wgi`/…), `path`/`open`/`admin`/
   `setenv`/`getenv`, `modules-localize`, and the **psmux auto-attach** (`psmux new-session -A -s Gerrrt`).
 - **`31-wsl-bridge.ps1`** — `kali`, `wsls`, `wslip`, `cdwsl`, `hostip`, `wslhome`, `wsl-restart`. §8.7.
-- **`32-psmux.ps1`** — the `mux` verb (attach-or-create). **`33-psmux-pill.ps1`** — the file-backed
-  operator/VPN status pill (§2.7).
+- **`32-psmux.ps1`** — the `mux` verb (attach-or-create). **`33-psmux-pill.ps1`** — the refresher
+  behind both status pills, operator/VPN and power (§2.7).
 - **`40-maint.ps1`** — the Task-Scheduler maintenance control surface (`maint-*`). §7.2.
 - **`45-doctor.ps1`** — `dotfiles-doctor`. **`48-core.ps1`** — the `core` umbrella (`core help|doctor|
   version|update`).
@@ -160,17 +160,35 @@ lazygit, htop) instead of psmux intercepting them.
 
 `status-position top`, refreshed every 5 s. The palette is set as `@tn_*` user options; pills use
 rounded Nerd-Font caps. **Left**: a session pill whose colour tracks mode (blue normal, orange
-when the prefix is held, yellow in copy mode). **Windows**: muted pills, current is blue with a
-zoom marker when zoomed. **Right**: three segments — the operator/VPN pill (file-backed, §2.7),
-the cwd basename, and the clock (`%H:%M`). Each live segment carries a Nerd-Font glyph.
+when the prefix is held, yellow in copy mode), followed by the operator/VPN IP pill (§2.7).
+**Windows**: muted pills, current is blue with a zoom marker when zoomed. **Right**: the cwd
+basename (nvim panes only), the clock (`%H:%M`), and the **power pill** right-most — where the
+macOS tmux bar puts its battery. Each live segment carries a Nerd-Font glyph.
+
+The power pill is the Windows port of Core's `tmux/scripts/tmux-battery.sh`, so the two terminal
+bars draw the identical segment: a level glyph plus percentage, green ≥60 / yellow ≥20 / red <20,
+with the glyph swapped for a charging bolt on AC (the colour keeps tracking the level, so a
+charging 15 % battery still reads red). On a desktop, where Core draws nothing at all, it falls
+back to Zebar's AC placeholder — a lone green plug 󰚥. Written by
+`psmux/scripts/psmux-power.ps1` on the same refresher as the VPN pill. Note it deliberately does
+*not* use Zebar's scale: the bars are matched terminal-to-terminal and desktop-to-desktop, and
+those two references disagree between 40 and 60 % (see `desktop/PARITY.md`).
 
 > **Design rule — no shell spawns on the render path.** psmux expands `status-right`
 > *synchronously* on the server's state-push (a blocking `Command::output()`), so a cold
 > `pwsh -NoProfile` pill stalled first paint (the "blank screen, blinking cursor" bug). The
-> netspeed/CPU pills were **removed entirely**; the VPN pill is now file-backed (read with
-> `cmd /c type`, ~10 ms). There is no battery pill. `resurrect`/`continuum` are intentionally
-> not loaded (they caused the slow-attach + "restored environment" banner). Plugin manager is
-> `ppm` (`prefix + I` to fetch).
+> netspeed/CPU pills were **removed entirely**; the VPN and power pills travel as **psmux user
+> options** (`@vpn_pill` / `@pwr_pill`), poked in out of band by their refreshers and read by the
+> bar as free in-process lookups — the `cmd /c type` cache-file read they replaced measured 88 ms
+> per push. `resurrect`/`continuum` are intentionally not loaded (they caused the slow-attach +
+> "restored environment" banner). Plugin manager is `ppm` (`prefix + I` to fetch).
+
+> **Gotcha that cost this repo its IP pill.** In PowerShell a bare `@name` in argument position is
+> the **splatting operator**, so `psmux set -g @vpn_pill $text` drops the option name from the
+> command line entirely; psmux receives one positional and silently discards the command — exit 0,
+> nothing on stderr. Always quote: `psmux set -g '@vpn_pill' $text`. Clearing needs `set -gu`
+> (unset), because an empty-string argument is dropped the same way. `tests/Repo.Tests.ps1` has a
+> static guard.
 
 ### 2.4 `warm on` / `destroy-unattached off` (the paired flip)
 
@@ -204,14 +222,27 @@ the cwd basename, and the clock (`%H:%M`). Each live segment carries a Nerd-Font
 - The bare-prompt **Ctrl+G sessionizer** (`Invoke-DotfilesSessionizer`, §3.2) is the shell twin
   of `prefix f` — both attach-or-create a psmux session.
 
-### 2.7 The operator/VPN pill
+### 2.7 The status pills (operator/VPN + power)
 
 `psmux-pill-enable` opts a box in (persisted as `DOTFILES_PSMUX_PILL=1`; `-AllNetworks` adds the
 plain-LAN IP). In opted-in panes an **in-session `System.Timers.Timer`** (not a Scheduled Task —
-avoids elevation) refreshes `%LOCALAPPDATA%\dotfiles\psmux-netinfo.pill` on a background thread
-(first tick ~2.5 s, then 60 s). Default is **tunnel-only**: an orange **VPN** pill appears only when a
-VPN/tunnel adapter is up (WireGuard/Wintun/OpenVPN/Tailscale/…). Commands: `psmux-pill-now`,
-`psmux-pill-enable`, `psmux-pill-disable`, `psmux-pill-status`.
+avoids elevation) runs **both** refreshers on a background thread (first tick ~2.5 s, then 60 s),
+cooperating across panes via the cache file's mtime so only one pane does the work:
+
+| Script | Pokes | Segment |
+|--------|-------|---------|
+| `psmux-netinfo.ps1` | `@vpn_pill` / `@vpn_fg` | status-left, after the session name |
+| `psmux-power.ps1` | `@pwr_pill` / `@pwr_fg` | status-right, right-most |
+
+The VPN pill defaults to **tunnel-only**: an orange pill appears only when a VPN/tunnel adapter is
+up (WireGuard/Wintun/OpenVPN/Tailscale/…). The power pill needs no opt-in to *look* right —
+`psmux.conf` seeds `@pwr_pill` with the desktop plug via `set -og` (only-if-unset, so a
+`prefix + r` reload can't clobber a live reading) — the refresher just keeps it honest on a laptop.
+`psmux-pill-disable` clears the IP but deliberately leaves the power pill alone: it's a parity
+segment, not an operator indicator.
+
+Commands: `psmux-pill-now`, `psmux-pill-enable`, `psmux-pill-disable`, `psmux-pill-status` (which
+reports what the **bar** is reading, not just the cache file).
 
 ---
 

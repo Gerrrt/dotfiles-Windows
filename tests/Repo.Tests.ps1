@@ -139,14 +139,180 @@ Describe 'psmux config' {
     BeforeAll {
         $RepoRoot = Split-Path -Parent $PSScriptRoot
         $script:Conf = Get-Content (Join-Path $RepoRoot 'psmux/psmux.conf') -Raw
+        # Just the `set -g status-*` lines — asserting against the whole file would
+        # happily match the pills' own explanatory comment blocks (which is exactly how
+        # the previous version of these tests kept passing after the segment it checked
+        # had been retired into a comment).
+        $script:StatusLeft  = ([regex]::Match($script:Conf, '(?m)^set -g status-left "(.*)"$')).Groups[1].Value
+        $script:StatusRight = ([regex]::Match($script:Conf, '(?m)^set -g status-right "(.*)"$')).Groups[1].Value
     }
-    It 'reads the status pill via an explicit cmd /c (not the pwsh type alias)' {
-        # In the pwsh default-shell, `type` aliases Get-Content and %VAR% does not
-        # expand; the pill segment must go through cmd /c to render at all.
-        $script:Conf | Should -Match '#\(cmd /c type %LOCALAPPDATA%'
+    It 'renders the VPN/IP pill from the @vpn_pill user option in status-left' {
+        # The lag-safe transport: an in-process option lookup, never a #() spawn.
+        $script:StatusLeft | Should -Match '#\{@vpn_pill\}'
+        $script:StatusLeft | Should -Match '#\[nobold,fg=#\{@vpn_fg\}\]'
     }
-    It 'silences the missing-cache error so the segment renders nothing when off' {
-        $script:Conf | Should -Match 'psmux-netinfo\.pill 2>NUL'
+    It 'renders the power pill right-most in status-right (macOS battery parity)' {
+        $script:StatusRight | Should -Match '#\{@pwr_pill\}'
+        $script:StatusRight | Should -Match 'fg=#\{@pwr_fg\}'
+        # Right-most: nothing but whitespace may follow it.
+        $script:StatusRight | Should -Match '#\{@pwr_pill\}\s*$'
+        # ...and it must come after the clock, not before it.
+        $script:StatusRight.IndexOf('#{@pwr_pill}') | Should -BeGreaterThan $script:StatusRight.IndexOf('%H:%M')
+    }
+    It 'defaults <Opt> with -o so a config reload cannot clobber a live poke' -ForEach @(
+        @{ Opt = '@pwr_pill' }
+        @{ Opt = '@pwr_fg' }
+        @{ Opt = '@vpn_fg' }
+    ) {
+        # `set -og` is only-if-unset. A plain `set -g` overwrites whatever the refresher last
+        # poked, on every prefix + r, and the segment then lies until the next tick (up to a
+        # full refresh interval).
+        #
+        # This applies to the COLOUR options as much as the text: these pills encode their
+        # state in the colour, so a clobbered @pwr_fg paints a 15% battery healthy-green and a
+        # clobbered @vpn_fg paints a live tunnel in the no-tunnel colour. @vpn_pill is the one
+        # option with no default at all — see psmux.conf.
+        $script:Conf | Should -Match "(?m)^set -og\s+$([regex]::Escape($Opt))\b"
+        $script:Conf | Should -Not -Match "(?m)^set -g\s+$([regex]::Escape($Opt))\b"
+    }
+    It 'spaces its bar gaps with #{p<n>:}, which psmux will not collapse' {
+        # psmux parses option values as split_whitespace() + join(" "), so ANY run of real
+        # spaces in these two values silently becomes one -- the twelve-space cwd->clock gap
+        # rendered as a single space for as long as it existed. #{p<n>:} pads an empty body at
+        # RENDER time, after the parser, and is the same idiom Core's tmux.conf uses.
+        foreach ($seg in @($script:StatusLeft, $script:StatusRight)) {
+            $seg | Should -Not -Match '  ' -Because 'a multi-space gap collapses to one; use #{p<n>:}'
+        }
+        # ...and the gaps are actually there (a guard that only forbids is a guard that
+        # passes when someone deletes the spacing altogether).
+        $script:StatusLeft  | Should -Match '#\{p\d+:\}'
+        $script:StatusRight | Should -Match '#\{p\d+:\}'
+    }
+    It 'keeps the prefix/copy/idle indicator branches the same width' {
+        # The invariant that stops holding the prefix key from sliding the IP pill sideways.
+        # These branches are the gap between #S and the pill, so they must render identically
+        # wide: 2 blanks + a 1-cell glyph + 2 blanks, against 5 blanks when idle.
+        # Anchored on #{p<n>:} in every branch: status-left opens with a SECOND
+        # #{?client_prefix,...} — the colour selector — and an unanchored pattern matches that
+        # one instead and silently compares palette names.
+        $m = [regex]::Match($script:StatusLeft,
+            '#\{\?client_prefix,(?<pfx>[^,]*#\{p\d+:\}[^,]*),#\{\?pane_in_mode,(?<copy>[^,]*#\{p\d+:\}[^,]*),(?<idle>[^,]*#\{p\d+:\}[^,]*)\}\}')
+        $m.Success | Should -BeTrue -Because 'the three-branch indicator should still be in status-left'
+        # Width = the #{p<n>:} pads plus one cell per remaining rune. The indicator glyphs are
+        # astral (U+F0820 / U+F018F) so they are TWO UTF-16 chars each but measured one cell
+        # on a real terminal — count runes, not chars.
+        $width = {
+            param($s)
+            $pad = ([regex]::Matches($s, '#\{p(\d+):\}') | ForEach-Object { [int]$_.Groups[1].Value } |
+                Measure-Object -Sum).Sum
+            $rest = [regex]::Replace($s, '#\{p\d+:\}', '')
+            [int]$pad + @($rest.EnumerateRunes()).Count
+        }
+        $pfx  = & $width $m.Groups['pfx'].Value
+        $copy = & $width $m.Groups['copy'].Value
+        $idle = & $width $m.Groups['idle'].Value
+        $pfx  | Should -Be $idle -Because "prefix branch is $pfx cells, idle is $idle"
+        $copy | Should -Be $idle -Because "copy-mode branch is $copy cells, idle is $idle"
+    }
+    It 'never spawns a process on the render path' {
+        # The hard rule from the config header: psmux expands these SYNCHRONOUSLY on
+        # every state push, so a #() here is keystroke lag.
+        $script:StatusLeft  | Should -Not -Match '#\('
+        $script:StatusRight | Should -Not -Match '#\('
+    }
+}
+
+Describe 'psmux power pill (Core tmux parity)' {
+    # The dev box is a desktop, so without -SimulateState every branch below would ship
+    # unexecuted — the one state that needs no logic would be the only one ever seen.
+    # Thresholds and glyphs are copied from dotfiles-core's tmux/scripts/tmux-battery.sh so
+    # the two TERMINAL bars agree; if either side moves, these break. (Zebar/sketchybar use a
+    # different scale on purpose — those two are matched to each other, desktop-to-desktop.)
+    BeforeAll {
+        $RepoRoot = Split-Path -Parent $PSScriptRoot
+        $script:PwrScript = Join-Path $RepoRoot 'psmux/scripts/psmux-power.ps1'
+        $script:PLUG   = [char]::ConvertFromUtf32(0xF06A5)   # nf-md-power_plug
+        $script:CHG    = [char]::ConvertFromUtf32(0xF0084)   # charging bolt
+        $script:GREEN  = '#9ece6a'
+        $script:YELLOW = '#e0af68'
+        $script:RED    = '#f7768e'
+    }
+    It 'shows a lone green plug on a desktop (no battery)' {
+        # The one deliberate divergence from Core, which draws nothing at all here.
+        $r = & $script:PwrScript -SimulateState NoBattery
+        $r.Text | Should -BeExactly $script:PLUG
+        $r.Fg   | Should -BeExactly $script:GREEN
+    }
+    It 'swaps the level glyph for a charging bolt on AC, keeping the level colour' {
+        # Core changes the GLYPH when charging, never the colour — a charging laptop at 15%
+        # is still red. Getting this wrong would silently hide a nearly-flat battery.
+        $r = & $script:PwrScript -SimulateState AC -SimulatePercent 15
+        $r.Text | Should -BeExactly "$script:CHG 15%"
+        $r.Fg   | Should -BeExactly $script:RED
+    }
+    It 'colours by charge level on battery: <Pct>% -> <Colour>' -ForEach @(
+        @{ Pct = 95; Colour = '#9ece6a' }
+        @{ Pct = 60; Colour = '#9ece6a' }   # boundary: >=60 is green
+        @{ Pct = 59; Colour = '#e0af68' }   # boundary: 59 tips into yellow
+        @{ Pct = 20; Colour = '#e0af68' }   # boundary: >=20 is still yellow
+        @{ Pct = 19; Colour = '#f7768e' }   # boundary: <20 is red
+        @{ Pct = 0;  Colour = '#f7768e' }
+    ) {
+        $r = & $script:PwrScript -SimulateState Battery -SimulatePercent $Pct
+        $r.Fg   | Should -BeExactly $Colour
+        $r.Text | Should -BeLike "*$Pct%"
+        $r.Text | Should -Not -BeLike "*$script:CHG*"   # no bolt off AC
+    }
+    It 'steps the level glyph at Core''s thresholds: <Pct>% -> U+<Cp>' -ForEach @(
+        @{ Pct = 95; Cp = '0xF0081' }   # battery high
+        @{ Pct = 60; Cp = '0xF0081' }
+        @{ Pct = 59; Cp = '0xF007E' }   # battery medium
+        @{ Pct = 20; Cp = '0xF007E' }
+        @{ Pct = 19; Cp = '0xF007B' }   # battery low
+    ) {
+        $r = & $script:PwrScript -SimulateState Battery -SimulatePercent $Pct
+        $r.Text | Should -BeLike "*$([char]::ConvertFromUtf32([int]$Cp))*"
+    }
+    It 'does not touch the live bar when simulating' {
+        # A test that poked the running session would rewrite the user's status bar.
+        $r = & $script:PwrScript -SimulateState Battery -SimulatePercent 50
+        $r | Should -BeOfType [pscustomobject]
+        (Get-Content -LiteralPath $script:PwrScript -Raw) |
+            Should -Match 'if \(\$SimulateState\) \{[\s\S]*?return Resolve-PowerPill'
+    }
+}
+
+Describe 'psmux user-option pokes' {
+    # REGRESSION GUARD for a bug that was completely silent: in PowerShell a bare @name
+    # in argument position is the SPLATTING operator, so `psmux set -g @vpn_pill $text`
+    # drops the option name from the command line entirely. psmux then receives a single
+    # positional and discards the whole command — exit 0, nothing on stderr, option never
+    # set. The VPN pill was invisible for months with every other layer working. Nothing
+    # at runtime will ever tell you; only this static check will.
+    BeforeAll {
+        $RepoRoot = Split-Path -Parent $PSScriptRoot
+        $script:PokeLines = Get-ChildItem -Path $RepoRoot -Recurse -Filter *.ps1 -File |
+            Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' } |
+            ForEach-Object {
+                $rel = $_.FullName.Substring($RepoRoot.Length + 1)
+                $n = 0
+                foreach ($line in (Get-Content -LiteralPath $_.FullName)) {
+                    $n++
+                    # `psmux set ...` / `psmux set-option ...`, ignoring commented-out lines.
+                    if ($line -match '(?<!#[^\r\n]{0,200})psmux\s+set(-option)?\s' -and $line.TrimStart() -notlike '#*') {
+                        [pscustomobject]@{ Where = "${rel}:${n}"; Text = $line.Trim() }
+                    }
+                }
+            }
+    }
+    It 'finds the poke lines it is meant to guard' {
+        # A rename that hides every call site would make the assertions below vacuous.
+        $script:PokeLines | Should -Not -BeNullOrEmpty
+    }
+    It 'quotes every @option name (a bare @name is splatted away by PowerShell)' {
+        $bad = $script:PokeLines | Where-Object { $_.Text -match "psmux\s+set(-option)?\s[^|]*(?<!['`"])@\w+" }
+        ($bad | ForEach-Object { $_.Where + '  ->  ' + $_.Text }) -join "`n" | Should -BeNullOrEmpty `
+            -Because "a bare @name splats away and psmux silently discards the set; write 'psmux set -g ''@name'' `$value'"
     }
 }
 
