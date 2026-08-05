@@ -20,6 +20,12 @@ powershell/local.ps1
 *.bak
 *.*.bak
 
+# Test artifacts - Pester's coverage gate writes coverage.xml into the repo root
+# by default, so running the documented local gate (tests/CoverageGate.ps1) would
+# otherwise leave an untracked report behind. CI runs in a fresh checkout and
+# never commits it; this is purely so a local run stays clean.
+coverage.xml
+
 # OS cruft
 Thumbs.db
 Desktop.ini
