@@ -17,7 +17,11 @@
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
 # provides: dotfiles-doctor, Get-DotRepoRevision
-# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn
+# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, Get-ScoopBucketHealthResult, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn
+# NB Get-ScoopBucketFault is deliberately absent: it comes from
+# packages/Check-PackageFreshness.ps1, dot-sourced on demand via its
+# DOTFILES_PKGFRESH_LIBONLY hook, not from the module or an earlier fragment — so it
+# is outside the load contract's universe by design.
 
 # --- repo git revision (shared by the probe, the header, and core-version) -----
 # The doctor's "Repo version" row, the report HEADER, and the `core-version` verb
