@@ -51,6 +51,23 @@ so entries are grouped by theme rather than strict semver releases.
   into a "no manifest version" skip for every app in it. Unit-tested via a new
   `DOTFILES_PKGFRESH_LIBONLY` hook, matching the `*_LIBONLY` idiom the sync scripts use.
   (`packages/Check-PackageFreshness.ps1`, `tests/Packages.Tests.ps1`)
+- **`dotfiles-doctor` now checks scoop bucket health too, because CI structurally can't.** The
+  guard above lives in a script whose CI runs on a fresh runner, where buckets are added
+  moments earlier and are always clean — so it protects the local-run path but can never
+  observe the box this actually happened on. The wedge was a **local** condition that made the
+  machine disagree with the bot for three weeks, and the doctor is where "is this box healthy"
+  belongs. New `Scoop buckets` row under _Health & toolchain_: `6 bucket(s) clean and pullable`
+  when fine, and on a fault it names the bucket, says why (`stuck mid-merge (MERGE_HEAD)`,
+  dirty tree, missing directory, not a clone) and hints the exact unwedge.
+
+  `warn`, not `fail` — nothing is broken and no tool is missing; the box just can't be trusted
+  to tell you what's current. The detector is **reused** from
+  `packages/Check-PackageFreshness.ps1` through its `DOTFILES_PKGFRESH_LIBONLY` hook rather
+  than reimplemented, so there's one definition of "this bucket can't be trusted"; the
+  dependency deliberately only points this way, since the freshness bot must stay
+  self-contained for CI, where the Dotfiles module isn't installed. The whole probe is wrapped
+  so a bucket check can never take down a doctor run.
+  (`powershell/Dotfiles/Doctor.Helpers.ps1`, `powershell/os/45-doctor.ps1`, `tests/Doctor.Tests.ps1`)
 
 ### Fixed
 

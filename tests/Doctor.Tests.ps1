@@ -103,6 +103,9 @@ Describe 'Get-DoctorGroup' {
         Get-DoctorGroup 'link: .gitconfig' | Should -Be 'Repo & links'
         Get-DoctorGroup 'nvim vendor'      | Should -Be 'Repo & links'
     }
+    It 'groups the scoop bucket probe with health, not Other' {
+        Get-DoctorGroup 'Scoop buckets' | Should -Be 'Health & toolchain'
+    }
     It 'keeps Profile fragments and Core toolchain in health (not repo)' {
         Get-DoctorGroup 'Profile fragments' | Should -Be 'Health & toolchain'
         Get-DoctorGroup 'Core toolchain'    | Should -Be 'Health & toolchain'
@@ -128,5 +131,43 @@ Describe 'Get-DoctorSummary' {
     }
     It 'overall is ok if all ok' {
         (Get-DoctorSummary @((New-DoctorResult a ok))).Overall | Should -Be 'ok'
+    }
+}
+
+Describe 'Get-ScoopBucketHealthResult' {
+    # The wording IS the check here: a wedged bucket makes `scoop status` report
+    # stale packages as current, so the row has to say why the box can't be
+    # trusted and give the exact unwedge. See the 2026-08-04 `extras` incident.
+    It 'is ok when nothing is faulted, and says how many it cleared' {
+        $res = Get-ScoopBucketHealthResult -Faults @() -Checked 6
+        $res.Status | Should -Be 'ok'
+        $res.Name   | Should -Be 'Scoop buckets'
+        $res.Detail | Should -Match '6 bucket'
+    }
+    It 'is ok, not a false pass, when there are no buckets at all' {
+        $res = Get-ScoopBucketHealthResult -Faults @() -Checked 0
+        $res.Status | Should -Be 'ok'
+        $res.Detail | Should -Match 'no scoop buckets'
+    }
+    It 'warns (not fails) on a fault — nothing is broken, it just cannot be trusted' {
+        $res = Get-ScoopBucketHealthResult -Faults @('extras — stuck mid-merge (MERGE_HEAD)') -Checked 6
+        $res.Status | Should -Be 'warn'
+    }
+    It 'names every faulted bucket in the detail' {
+        $res = Get-ScoopBucketHealthResult -Faults @('extras — stuck mid-merge', 'java — dirty') -Checked 6
+        $res.Detail | Should -Match 'extras'
+        $res.Detail | Should -Match 'java'
+    }
+    It 'hints the actual unwedge, not just "something is wrong"' {
+        $res = Get-ScoopBucketHealthResult -Faults @('extras — stuck mid-merge') -Checked 6
+        $res.Hint | Should -Match 'reset --hard'
+        $res.Hint | Should -Match 'scoop update'
+    }
+    It 'explains the stale-reporting risk in the hint (why a warn matters)' {
+        $res = Get-ScoopBucketHealthResult -Faults @('extras — stuck mid-merge') -Checked 6
+        $res.Hint | Should -Match 'stale'
+    }
+    It 'treats $null faults like none' {
+        (Get-ScoopBucketHealthResult -Faults $null -Checked 3).Status | Should -Be 'ok'
     }
 }

@@ -43,7 +43,7 @@ function Get-DoctorGroup {
     switch -Regex ($Name) {
         '^(PowerShell|Execution policy|Symlink)'                      { return 'Shell & environment' }
         '^(Repo|Profile link|link:|Modules|git identity|nvim vendor)' { return 'Repo & links' }
-        '^(Profile fragments|Core toolchain)'                         { return 'Health & toolchain' }
+        '^(Profile fragments|Core toolchain|Scoop buckets)'           { return 'Health & toolchain' }
         default                                                       { return 'Other' }
     }
 }
@@ -89,6 +89,34 @@ function Get-NvimVendorDetail {
     $detail = "vendored from core@$short"
     if ($When -and $When -ne 'unknown') { $detail += "  ($When)" }
     return $detail
+}
+
+# --- scoop bucket health -> a doctor result -----------------------------------
+# Pure: takes the faults the host probe found (one string per unhealthy bucket,
+# already formatted by packages/Check-PackageFreshness.ps1's Get-ScoopBucketFault)
+# and turns them into a result row. Kept here, and unit-tested, because the
+# WORDING is the whole value of this check.
+#
+# Why doctor cares at all: a scoop bucket is a git clone, and a stuck clone keeps
+# serving manifests from whatever commit it froze at. `scoop status` then reports
+# months-old packages as "latest version" and every freshness answer on the box is
+# quietly wrong -- in the reassuring direction. This box sat that way from mid-July
+# to 2026-08-04 with `extras` stuck mid-merge on an upstream rename, contradicting
+# the CI freshness bot, which was right.
+#
+# `warn`, not `fail`: nothing is broken and no tool is missing -- the box just
+# cannot be trusted to tell you what is current until the clone is unwedged.
+function Get-ScoopBucketHealthResult {
+    [OutputType([pscustomobject])]
+    param([string[]]$Faults, [int]$Checked = 0)
+    if (-not $Faults -or $Faults.Count -eq 0) {
+        $detail = if ($Checked -gt 0) { "$Checked bucket(s) clean and pullable" } else { 'no scoop buckets found' }
+        return (New-DoctorResult 'Scoop buckets' 'ok' $detail)
+    }
+    return (New-DoctorResult 'Scoop buckets' 'warn' ($Faults -join '; ') `
+        ('a wedged bucket makes `scoop status` report stale packages as current — ' +
+         'git -C "$HOME\scoop\buckets\<bucket>" fetch origin; ' +
+         'git -C "$HOME\scoop\buckets\<bucket>" reset --hard origin/HEAD; scoop update'))
 }
 
 # --- pure remediation planner -------------------------------------------------

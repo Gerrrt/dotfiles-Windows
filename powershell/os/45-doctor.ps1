@@ -252,6 +252,43 @@ function script:Get-DoctorResults {
         $r.Add((New-DoctorResult 'Core toolchain runs' 'fail' "on PATH but won't launch: $($broken -join ', ')" 'a stale Chocolatey/duplicate shim is shadowing the scoop binary — `scoop reset <pkg>` (e.g. ripgrep, fzf) or remove the duplicate, and put scoop\shims ahead of it on PATH'))
     }
 
+    # scoop bucket clones must actually be pullable. A clone stuck mid-merge keeps
+    # serving frozen manifests, so `scoop status` calls months-old packages "latest"
+    # and the box quietly disagrees with the CI freshness bot — which is what happened
+    # here with `extras` between mid-July and 2026-08-04. CI can't catch this (its
+    # buckets are always freshly added), so the check has to live on the box.
+    #
+    # The detector is REUSED from packages/Check-PackageFreshness.ps1 via its
+    # DOTFILES_PKGFRESH_LIBONLY hook rather than reimplemented — one definition of
+    # "this bucket can't be trusted", and the freshness bot must stay self-contained
+    # for CI (where this module isn't installed), so the dependency only goes this way.
+    try {
+        $bucketRoot = Join-Path $HOME 'scoop\buckets'
+        if ((Test-Path $bucketRoot) -and $root -and (Test-Path $root)) {
+            $pkgFresh = Join-Path $root 'packages\Check-PackageFreshness.ps1'
+            if (Test-Path $pkgFresh) {
+                $prev = $env:DOTFILES_PKGFRESH_LIBONLY
+                try {
+                    $env:DOTFILES_PKGFRESH_LIBONLY = '1'
+                    . $pkgFresh
+                } finally {
+                    if ($null -eq $prev) { Remove-Item Env:DOTFILES_PKGFRESH_LIBONLY -ErrorAction SilentlyContinue }
+                    else { $env:DOTFILES_PKGFRESH_LIBONLY = $prev }
+                }
+                $buckets = @(Get-ChildItem $bucketRoot -Directory -ErrorAction SilentlyContinue)
+                $faults  = @()
+                foreach ($b in $buckets) {
+                    $fault = Get-ScoopBucketFault $b.FullName
+                    if ($fault) { $faults += "$($b.Name) — $fault" }
+                }
+                $r.Add((Get-ScoopBucketHealthResult -Faults $faults -Checked $buckets.Count))
+            }
+        }
+    } catch {
+        # Never let a bucket probe take down the whole doctor run.
+        $r.Add((New-DoctorResult 'Scoop buckets' 'warn' "could not check ($($_.Exception.Message))" ''))
+    }
+
     return $r
 }
 
