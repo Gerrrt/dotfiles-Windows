@@ -43,12 +43,31 @@ Describe 'cheap fragments load well under budget' {
         # These define functions / register completers and must NOT do heavy work at
         # load. Real cost is tens of ms; the 3s budget only trips on an egregious
         # regression (e.g. a network/subprocess call added to a load-time path).
+        #
+        # Measured ONCE COLD, though, this asserted the wrong thing: the first
+        # dot-source in a fresh session also pays PowerShell's parse/compile and any
+        # module autoload, none of which is load-time work these fragments do. On a
+        # shared GitHub runner that noise is unbounded, and on 2026-08-05 it put a run
+        # at 3012ms against the 3000ms budget — a 0.4% overshoot, on a body whose real
+        # cost is ~100x under the gate. A red CI that means "the runner was busy" is
+        # worse than no gate, because it trains you to re-run instead of read.
+        #
+        # So: one untimed warm-up to pay the one-time costs, then take the FASTEST of
+        # three timed runs. Noise only ever ADDS time, so the minimum is the closest
+        # estimate of true load cost — and the regression this exists to catch (a
+        # network or subprocess call on a load path) is slow on every run, so it still
+        # trips. Re-sourcing is safe: the only aliasing here is `Set-Alias`, which
+        # overwrites, and nothing in these three files is append-only.
         $global:DOTFILES = $script:RepoRoot
-        $elapsed = Measure-Command {
+        $load = {
             . (Join-Path $script:RepoRoot 'powershell/core/05-lib.ps1')
             . (Join-Path $script:RepoRoot 'powershell/core/55-help.ps1')
             . (Join-Path $script:RepoRoot 'powershell/core/00-aliases.ps1')
         }
-        $elapsed.TotalMilliseconds | Should -BeLessThan 3000
+        $null = Measure-Command $load   # warm-up — discarded
+        $fastest = (1..3 |
+                ForEach-Object { (Measure-Command $load).TotalMilliseconds } |
+                Measure-Object -Minimum).Minimum
+        $fastest | Should -BeLessThan 3000
     }
 }

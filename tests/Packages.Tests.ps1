@@ -392,3 +392,70 @@ Describe 'winget-import.json drift' {
         }
     }
 }
+
+Describe 'Get-ScoopBucketFault (Check-PackageFreshness)' {
+    # A scoop bucket is a git clone, and a wedged clone keeps serving manifests from
+    # whatever commit it froze at -- so stale versions compare as MATCHING and the
+    # freshness check goes green on bad data. These cover the shapes that actually
+    # produced that false green (see the 2026-08-04 `extras` mid-merge wedge).
+    BeforeAll {
+        $script:PkgRepoRoot = Split-Path -Parent $PSScriptRoot
+        $env:DOTFILES_PKGFRESH_LIBONLY = '1'
+        . (Join-Path $script:PkgRepoRoot 'packages/Check-PackageFreshness.ps1')
+
+        # A scriptblock, not a `function` -- Pester 6 runs each It in its own scope, so
+        # a function declared in the Describe body is not visible inside them.
+        $script:NewCleanBucketClone = {
+            param([string]$Path)
+            git -C $Path init --quiet 2>&1 | Out-Null
+            git -C $Path config user.email 'test@example.invalid' 2>&1 | Out-Null
+            git -C $Path config user.name 'test' 2>&1 | Out-Null
+            Set-Content -Path (Join-Path $Path 'app.json') -Value '{"version":"1.0.0"}' -Encoding UTF8
+            git -C $Path add -A 2>&1 | Out-Null
+            git -C $Path commit -m init --quiet 2>&1 | Out-Null
+        }
+    }
+    AfterAll { Remove-Item Env:DOTFILES_PKGFRESH_LIBONLY -ErrorAction SilentlyContinue }
+
+    BeforeEach {
+        $script:Bucket = Join-Path ([System.IO.Path]::GetTempPath()) ("bucket-{0}" -f ([guid]::NewGuid().ToString('N')))
+        New-Item -ItemType Directory -Path $script:Bucket -Force | Out-Null
+    }
+    AfterEach { Remove-Item $script:Bucket -Recurse -Force -ErrorAction SilentlyContinue }
+
+    It 'passes a clean clone' {
+        & $script:NewCleanBucketClone $script:Bucket
+        Get-ScoopBucketFault $script:Bucket | Should -BeNullOrEmpty
+    }
+
+    It 'flags a missing bucket directory' {
+        $gone = Join-Path $script:Bucket 'nope'
+        Get-ScoopBucketFault $gone | Should -Match 'missing'
+    }
+
+    It 'flags a directory that is not a git clone' {
+        Get-ScoopBucketFault $script:Bucket | Should -Match 'not a git clone'
+    }
+
+    It 'flags an interrupted merge -- the wedge that caused the false green' {
+        & $script:NewCleanBucketClone $script:Bucket
+        # MERGE_HEAD is what git leaves behind when a merge stops on conflict; while it
+        # exists every `git pull` refuses, so the bucket silently stops advancing.
+        Set-Content -Path (Join-Path $script:Bucket '.git/MERGE_HEAD') -Value ('0' * 40) -Encoding UTF8
+        Get-ScoopBucketFault $script:Bucket | Should -Match 'stuck mid-'
+    }
+
+    It 'flags an interrupted rebase' {
+        & $script:NewCleanBucketClone $script:Bucket
+        New-Item -ItemType Directory -Path (Join-Path $script:Bucket '.git/rebase-merge') -Force | Out-Null
+        Get-ScoopBucketFault $script:Bucket | Should -Match 'stuck mid-'
+    }
+
+    It 'flags a dirty working tree and names the offending paths' {
+        & $script:NewCleanBucketClone $script:Bucket
+        Set-Content -Path (Join-Path $script:Bucket 'app.json') -Value '{"version":"9.9.9"}' -Encoding UTF8
+        $fault = Get-ScoopBucketFault $script:Bucket
+        $fault | Should -Match 'dirty'
+        $fault | Should -Match 'app\.json'
+    }
+}

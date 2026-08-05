@@ -34,14 +34,75 @@ $lock       = Read-PackageLock (Get-Content (Join-Path $here 'packages.lock.json
 $scoopfile  = Get-Content (Join-Path $here 'scoopfile.json') -Raw | ConvertFrom-Json
 $wingetfile = Get-Content (Join-Path $here 'winget.json')   -Raw | ConvertFrom-Json
 
-$outdated = [System.Collections.Generic.List[object]]::new()
-$skipped  = [System.Collections.Generic.List[string]]::new()
+$outdated  = [System.Collections.Generic.List[object]]::new()
+$skipped   = [System.Collections.Generic.List[string]]::new()
+$unhealthy = [System.Collections.Generic.List[string]]::new()
+
+function Get-ScoopBucketFault {
+    <#
+      Return why a bucket clone can't be trusted, or $null when it's fine.
+
+      This exists because a bucket is a git clone, and a git clone can get STUCK.
+      A wedged clone doesn't error — `scoop update` prints its failure and moves on,
+      and every manifest this script then reads is served from whatever commit the
+      bucket froze at. The versions still parse, still compare, and still come back
+      "matching", so the freshness check goes green on stale data. That is the worst
+      possible failure mode for a check: wrong in the REASSURING direction.
+
+      Not hypothetical. On 2026-08-04 the `extras` clone was stuck mid-merge on an
+      upstream rename (`UD bucket/pycharm.json`) and had been since mid-July. Locally
+      `scoop status` reported lazygit and tailscale "latest version" while this bot
+      correctly had them months behind — the box contradicted CI, and the box was
+      wrong. Reset to origin and it immediately reproduced the bot's findings.
+
+      Cheap enough to run unconditionally: a handful of git calls. On a CI runner the
+      buckets are freshly added so this is a no-op, but it also catches the case where
+      the `scoop bucket add` loop above swallowed a failure (its catch is empty) and
+      left a bucket missing — today that degrades quietly into a "no manifest version"
+      skip for every app in it.
+    #>
+    param([string]$Path)
+
+    if (-not (Test-Path $Path)) { return 'bucket directory is missing (did `scoop bucket add` fail?)' }
+    $gitDir = Join-Path $Path '.git'
+    if (-not (Test-Path $gitDir)) { return 'not a git clone — cannot verify it is current' }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) { return $null }  # can't check; don't cry wolf
+
+    # An interrupted merge/rebase is exactly the extras case: HEAD is pinned at the
+    # pre-merge commit and every subsequent pull refuses with "unmerged files".
+    # NB single-quoted strings below — in a double-quoted PowerShell string a backtick
+    # is the escape character, so the markdown code ticks would be silently eaten.
+    $stuck = [ordered]@{
+        'MERGE_HEAD'       = 'merge'
+        'rebase-merge'     = 'rebase'
+        'rebase-apply'     = 'rebase'
+        'CHERRY_PICK_HEAD' = 'cherry-pick'
+    }
+    foreach ($marker in $stuck.Keys) {
+        if (Test-Path (Join-Path $gitDir $marker)) {
+            return ('stuck mid-{0} ({1}) — every `git pull` here fails, so its manifests are frozen' -f $stuck[$marker], $marker)
+        }
+    }
+
+    $status = @(git -C $Path status --porcelain 2>&1)
+    if ($LASTEXITCODE -ne 0) { return "git status failed: $($status -join ' ')" }
+    if ($status.Count -gt 0) {
+        $sample = ($status | Select-Object -First 3) -join '; '
+        return "working tree is dirty ($($status.Count) path(s): $sample) — a pull may be blocked"
+    }
+    return $null
+}
 
 function Test-ExactVersion {
     # An exact pin we can compare; ranges/constraints like "> 8.12" are skipped.
     param([string]$Value)
     return $Value -match '^[0-9][0-9A-Za-z._+-]*$'
 }
+
+# Unit-test hook: dot-source for the pure helpers above without installing scoop or
+# hitting the network. Same idiom as nvim-sync/starship-sync/install (see their
+# *_LIBONLY hooks); Packages.Tests.ps1 drives Get-ScoopBucketFault through it.
+if ($env:DOTFILES_PKGFRESH_LIBONLY -eq '1') { return }
 
 # ---- scoop: install (no apps) + add buckets, then read manifest versions off disk ----
 if (-not $SkipScoop) {
@@ -92,6 +153,14 @@ if (-not $SkipScoop) {
     }
 
     $bucketRoot = Join-Path $HOME 'scoop\buckets'
+
+    # Validate the inputs before trusting the comparison. Only the buckets apps
+    # actually resolve manifests from — that's the data this script reads.
+    foreach ($bucketName in (@($scoopfile.apps | ForEach-Object { $_.Source }) | Where-Object { $_ } | Sort-Object -Unique)) {
+        $fault = Get-ScoopBucketFault (Join-Path $bucketRoot $bucketName)
+        if ($fault) { $unhealthy.Add("``$bucketName`` — $fault") }
+    }
+
     foreach ($app in $scoopfile.apps) {
         $name   = $app.Name
         $bucket = $app.Source
@@ -137,21 +206,50 @@ if (-not $SkipWinget) {
 # ---- report ----
 if (Test-Path $ReportPath) { Remove-Item $ReportPath -Force }
 
-if ($outdated.Count -eq 0) {
+# An unhealthy bucket must file a report even when NOTHING looks outdated — that
+# silent-green case is the entire reason the check exists. Reporting only when
+# $outdated is non-empty would keep the exact failure it is meant to catch invisible.
+if ($outdated.Count -eq 0 -and $unhealthy.Count -eq 0) {
     Write-Output "All managed scoop/winget packages match packages.lock.json ($($skipped.Count) skipped)."
     exit 0
 }
 
 $lines = [System.Collections.Generic.List[string]]::new()
-$lines.Add('The following managed packages are behind their upstream version (vs `packages.lock.json`):')
-$lines.Add('')
-$lines.Add('| Manager | Package | Locked | Available |')
-$lines.Add('| --- | --- | --- | --- |')
-foreach ($o in ($outdated | Sort-Object Manager, Name)) {
-    $lines.Add("| $($o.Manager) | ``$($o.Name)`` | $($o.Locked) | $($o.Available) |")
+
+# Leads the report: it invalidates everything below it, so it must not be a footnote.
+if ($unhealthy.Count -gt 0) {
+    $lines.Add('> [!WARNING]')
+    $lines.Add('> **A scoop bucket clone is not in a trustworthy state, so the versions below may be wrong.**')
+    $lines.Add('> A wedged bucket keeps serving manifests from whatever commit it froze at, and those')
+    $lines.Add('> stale versions compare as *matching* — so the real risk is a package silently reported')
+    $lines.Add('> as current when it is months behind.')
+    $lines.Add('>')
+    foreach ($u in $unhealthy) { $lines.Add("> - $u") }
+    $lines.Add('>')
+    $lines.Add('> Fix on the affected box, then re-run:')
+    $lines.Add('>')
+    $lines.Add('> ```powershell')
+    $lines.Add('> git -C "$HOME\scoop\buckets\<bucket>" fetch origin')
+    $lines.Add('> git -C "$HOME\scoop\buckets\<bucket>" reset --hard origin/HEAD   # buckets are pristine upstream clones')
+    $lines.Add('> scoop update')
+    $lines.Add('> ```')
+    $lines.Add('')
 }
-$lines.Add('')
-$lines.Add('Re-pin from a box with the apps installed: `.\packages\Update-PackageLock.ps1`, then commit `packages.lock.json`.')
+
+if ($outdated.Count -gt 0) {
+    $lines.Add('The following managed packages are behind their upstream version (vs `packages.lock.json`):')
+    $lines.Add('')
+    $lines.Add('| Manager | Package | Locked | Available |')
+    $lines.Add('| --- | --- | --- | --- |')
+    foreach ($o in ($outdated | Sort-Object Manager, Name)) {
+        $lines.Add("| $($o.Manager) | ``$($o.Name)`` | $($o.Locked) | $($o.Available) |")
+    }
+    $lines.Add('')
+    $lines.Add('Re-pin from a box with the apps installed: `.\packages\Update-PackageLock.ps1`, then commit `packages.lock.json`.')
+}
+else {
+    $lines.Add('No package was found behind its upstream version — but see the warning above before trusting that.')
+}
 if ($skipped.Count -gt 0) {
     $lines.Add('')
     $lines.Add('<details><summary>Skipped (could not compare)</summary>')
@@ -161,5 +259,6 @@ if ($skipped.Count -gt 0) {
     $lines.Add('</details>')
 }
 Set-Content -Path $ReportPath -Value ($lines -join "`n") -Encoding UTF8
-Write-Output "$($outdated.Count) package(s) behind upstream — report written to $ReportPath"
+Write-Output ("$($outdated.Count) package(s) behind upstream, $($unhealthy.Count) unhealthy bucket(s)" +
+    " — report written to $ReportPath")
 exit 0
