@@ -264,7 +264,7 @@ running it. Per-change detail below._
   (`psmux/psmux.conf`, `psmux/scripts/psmux-netinfo.ps1`)
 - **psmux prefix indicator style leaked into the window tabs.** A `#[default]` reset after
   `#{@vpn_pill}` stops the pill's bold/fg bleeding into the tabs. The indicator was also
-  widened to an equal-width padded cell (`󰠠` / idle `   `) so its branches couldn't shift
+  widened to an equal-width padded cell (` 󰠠 ` / idle `   `) so its branches couldn't shift
   the tabs — kept for stable width, though `absolute-centre` above is what actually holds
   the tabs still. (`psmux/psmux.conf`)
 - **psmux nvim cwd jammed against the clock.** Two passes: the `status-right` cwd↔clock gap
