@@ -6,13 +6,15 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+## [v1.6.0] - 2026-08-05
+
 ### Added
 
 - **psmux power pill — the battery segment the macOS tmux bar has.** New
   `psmux/scripts/psmux-power.ps1`, rendered **right-most** in `status-right`, which is where
   Core puts it too (its last slot is `#{@status_right_os}`, the hook each OS repo fills). It is
   the Windows port of Core's `tmux/scripts/tmux-battery.sh` and uses that scale, so the two
-  *terminal* bars agree: green ≥60 / yellow ≥20 / red <20, with the level glyph swapped for a
+  _terminal_ bars agree: green ≥60 / yellow ≥20 / red <20, with the level glyph swapped for a
   charging bolt on AC and the colour still tracking the level. **One deliberate divergence** —
   Core prints nothing when there's no battery, so its segment vanishes on a desktop; here it
   falls back to Zebar's AC placeholder, a lone green `md-power-plug` 󰚥, since an empty segment
@@ -28,6 +30,7 @@ so entries are grouped by theme rather than strict semver releases.
   Note this means the psmux bar and Zebar disagree between 40 and 60 % — deliberately. The
   bars are matched terminal-to-terminal (psmux ↔ Core tmux) and desktop-to-desktop
   (Zebar ↔ sketchybar), and those two references use different scales.
+
 - **Test coverage for the power pill's every state.** The dev box is a desktop, so the laptop
   branches would otherwise ship unexecuted. `psmux-power.ps1` takes a `-SimulateState` testing
   seam (no host read, no poke) and `tests/Repo.Tests.ps1` asserts each colour and glyph
@@ -36,7 +39,7 @@ so entries are grouped by theme rather than strict semver releases.
 - **The package-freshness check now validates its own inputs — a wedged scoop bucket is a
   finding, not a silent green.** A bucket is a git clone, and a stuck clone keeps serving
   manifests from whatever commit it froze at. Those stale versions still parse and still
-  compare as *matching*, so the check reported "everything's current" on data months old —
+  compare as _matching_, so the check reported "everything's current" on data months old —
   wrong in the **reassuring** direction, the worst way for a check to fail. That is not
   hypothetical: on 2026-08-04 the local `extras` clone had been stuck mid-merge on an upstream
   rename (`UD bucket/pycharm.json`) since mid-July, so `scoop status` called lazygit and
@@ -51,6 +54,7 @@ so entries are grouped by theme rather than strict semver releases.
   into a "no manifest version" skip for every app in it. Unit-tested via a new
   `DOTFILES_PKGFRESH_LIBONLY` hook, matching the `*_LIBONLY` idiom the sync scripts use.
   (`packages/Check-PackageFreshness.ps1`, `tests/Packages.Tests.ps1`)
+
 - **`dotfiles-doctor` now checks scoop bucket health too, because CI structurally can't.** The
   guard above lives in a script whose CI runs on a fresh runner, where buckets are added
   moments earlier and are always clean — so it protects the local-run path but can never
@@ -92,7 +96,7 @@ so entries are grouped by theme rather than strict semver releases.
   Fixed by quoting `'@vpn_pill'` / `'@vpn_fg'`. (`psmux/scripts/psmux-netinfo.ps1`)
 - **A config reload repainted a live pill in the wrong colour.** `@vpn_fg` was defaulted with a
   plain `set -g`, so every `prefix + r` overwrote whatever the refresher last poked. Because the
-  pill's *text* is never defaulted, the two halves then disagreed until the next tick — up to a
+  pill's _text_ is never defaulted, the two halves then disagreed until the next tick — up to a
   full refresh interval — and these pills encode their state in the colour: an active tunnel kept
   showing its address in the no-tunnel green, losing the orange that is the entire signal. Both
   colour options now use `set -og` (only-if-unset), which still guarantees a non-empty colour on
@@ -112,7 +116,7 @@ so entries are grouped by theme rather than strict semver releases.
   values as `split_whitespace()` + `join(" ")`, so every run of spaces collapses to one, quoted
   or not — which means the twelve-space cwd→clock gap added in
   [#163](https://github.com/dotgibson/dotfiles-Windows/pull/163) had never actually widened
-  anything. Bar gaps now use **`#{p<n>:}`**, which pads an empty body at *render* time — after
+  anything. Bar gaps now use **`#{p<n>:}`**, which pads an empty body at _render_ time — after
   the parser has had its way — and is the same idiom Core's `tmux.conf` already uses
   (`#{p19:}`), so the two configs now read the same. The session→IP gap is wider as a result,
   and a test forbids multi-space runs in `status-left`/`status-right` so this can't silently
@@ -121,7 +125,7 @@ so entries are grouped by theme rather than strict semver releases.
   working inside `@vpn_pill`.
 - **Two stale psmux config tests.** They asserted the pill was read via
   `#(cmd /c type %LOCALAPPDATA%…)` and passed only because that string still appeared in the
-  *comment block* describing the retired transport — they had stopped testing anything real.
+  _comment block_ describing the retired transport — they had stopped testing anything real.
   Repointed at the live `@vpn_pill` / `@pwr_pill` segments, plus a static guard that every
   `psmux set` in the repo quotes its `@option` name, since the splatting bug above is invisible
   at runtime. (`tests/Repo.Tests.ps1`)
@@ -260,7 +264,7 @@ running it. Per-change detail below._
   (`psmux/psmux.conf`, `psmux/scripts/psmux-netinfo.ps1`)
 - **psmux prefix indicator style leaked into the window tabs.** A `#[default]` reset after
   `#{@vpn_pill}` stops the pill's bold/fg bleeding into the tabs. The indicator was also
-  widened to an equal-width padded cell (` 󰠠 ` / idle `   `) so its branches couldn't shift
+  widened to an equal-width padded cell (`󰠠` / idle `   `) so its branches couldn't shift
   the tabs — kept for stable width, though `absolute-centre` above is what actually holds
   the tabs still. (`psmux/psmux.conf`)
 - **psmux nvim cwd jammed against the clock.** Two passes: the `status-right` cwd↔clock gap
@@ -283,7 +287,7 @@ running it. Per-change detail below._
   `clip`/`clip-paste` ladder does not apply on the host: `config/clipboard.lua` wires the
   `clip-windows` provider (`clip.exe` copy + PowerShell paste) instead. Fixed upstream in Core
   (`health.lua` now detects native Windows via `has("win32")` and defers to `:checkhealth
-  vim.provider` for the live backend) and pulled in with the nvim re-vendor above.
+vim.provider` for the live backend) and pulled in with the nvim re-vendor above.
 
 ### Docs
 
@@ -325,7 +329,7 @@ running it. Per-change detail below._
   reading. Applied to both the scoop and winget comparison sites. Unit-tested offline in
   `tests/Packages.Tests.ps1`.
 
-## v1.3.0 - 2026-07-16
+## [v1.3.0] - 2026-07-16
 
 ### Added
 
@@ -501,12 +505,11 @@ running it. Per-change detail below._
 - **`bootstrap.ps1` handoff to `install.ps1` failed with "A positional parameter
   cannot be found that accepts argument '$null'".** When no `DOTFILES_BOOTSTRAP_ARGS`
   were set (the common case), `Get-BootstrapInstallArgs` returned `@()`, which
-  PowerShell unrolls to `$null` on assignment; splatting `$null` into the
-  switch-only `install.ps1` passed a literal `$null` positional argument. The call
-  site now wraps the result in `@()` and guards the splat, so a fresh
-  `.\bootstrap.ps1` (or the `irm | iex` one-liner) runs the installer cleanly.
+  PowerShell unrolls to `$null`on assignment; splatting`$null` into the
+  switch-only `install.ps1` passed a literal `$null`positional argument. The call
+site now wraps the result in`@()`and guards the splat, so a fresh`.\bootstrap.ps1`(or the`irm | iex` one-liner) runs the installer cleanly.
 
-### Added
+### Added - v1.2.0
 
 - **Zebar bar gains pomodoro, media controls, and a power menu.** Cherry-picked from
   [`Gerrrt/yasb-glazewm-config`](https://github.com/Gerrrt/yasb-glazewm-config) into the
@@ -569,7 +572,7 @@ running it. Per-change detail below._
   three, and filled in the corresponding `CLAUDE.md` "Where things are" gaps
   (`git/`, `maint/`, `ssh/`, `docs/`, `tests/`).
 
-### Fixed
+### Fixed - v1.2.0
 
 - **`fix(module)`: the `Dotfiles` module surface runs under `Set-StrictMode -Version Latest`.**
   The non-interactive helper surface (`Dotfiles.psm1` → `core/05-lib.ps1` + the
