@@ -33,6 +33,24 @@ so entries are grouped by theme rather than strict semver releases.
   seam (no host read, no poke) and `tests/Repo.Tests.ps1` asserts each colour and glyph
   threshold — including that a charging 15 % battery stays **red**, which is the case a naive
   "on AC → blue" reading would silently hide.
+- **The package-freshness check now validates its own inputs — a wedged scoop bucket is a
+  finding, not a silent green.** A bucket is a git clone, and a stuck clone keeps serving
+  manifests from whatever commit it froze at. Those stale versions still parse and still
+  compare as *matching*, so the check reported "everything's current" on data months old —
+  wrong in the **reassuring** direction, the worst way for a check to fail. That is not
+  hypothetical: on 2026-08-04 the local `extras` clone had been stuck mid-merge on an upstream
+  rename (`UD bucket/pycharm.json`) since mid-July, so `scoop status` called lazygit and
+  tailscale "latest version" while the CI bot correctly had them behind. The box contradicted
+  CI and the box was wrong.
+
+  `Check-PackageFreshness.ps1` now checks every bucket it reads manifests from — present, a
+  real clone, not stuck on a merge/rebase/cherry-pick, clean tree — and **writes a report even
+  when nothing looks outdated**, since that silent-green case is the entire point. The warning
+  leads the issue body, because it invalidates every row under it. Also catches a bucket the
+  `scoop bucket add` loop failed to create (its catch is empty), which today degrades quietly
+  into a "no manifest version" skip for every app in it. Unit-tested via a new
+  `DOTFILES_PKGFRESH_LIBONLY` hook, matching the `*_LIBONLY` idiom the sync scripts use.
+  (`packages/Check-PackageFreshness.ps1`, `tests/Packages.Tests.ps1`)
 
 ### Fixed
 
