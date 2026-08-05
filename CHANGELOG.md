@@ -36,6 +36,18 @@ so entries are grouped by theme rather than strict semver releases.
 
 ### Fixed
 
+- **The load-budget perf test was measuring the runner, not the code.** `Perf.Tests.ps1`'s
+  "dot-sources the tool-independent fragments quickly" timed a single **cold** dot-source, so it
+  also charged the fragments for PowerShell's one-time parse/compile and module autoload — work
+  they don't do. On a shared GitHub runner that noise is unbounded, and on 2026-08-05 it landed a
+  CI run at 3012 ms against the 3000 ms budget: a 0.4 % overshoot on a body whose real cost is
+  roughly **100× under** the gate. A re-run passed untouched, which is the tell. A red CI that
+  actually means "the runner was busy" is worse than no gate at all, because it teaches you to
+  re-run instead of read. Now: one untimed warm-up, then the **fastest of three** timed runs.
+  Noise only ever adds time, so the minimum is the closest estimate of true load cost — while the
+  regression this exists to catch (a network or subprocess call added to a load path) is slow on
+  every run and still trips it. The 3000 ms budget is deliberately unchanged; raising it would
+  have hidden the flake instead of removing it. (`tests/Perf.Tests.ps1`)
 - **The VPN/IP pill never rendered — a PowerShell splatting bug.** `psmux-netinfo.ps1` poked the
   bar with `psmux set -g @vpn_pill $text`. In argument position a bare `@name` is PowerShell's
   **splatting operator**, so the undefined `$vpn_pill` expanded to nothing and the option name
