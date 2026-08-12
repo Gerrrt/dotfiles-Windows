@@ -25,32 +25,32 @@
   "initialRows": 32,
   "keybindings": [
     {
-      "id": "Terminal.SplitPaneRight",
-      "keys": "alt+shift+plus"
-    },
-    {
       "id": "Terminal.MoveFocusDown",
       "keys": "alt+down"
+    },
+    {
+      "id": "Terminal.SplitPaneRight",
+      "keys": "alt+shift+plus"
     },
     {
       "id": "Terminal.SplitPaneDown",
       "keys": "alt+shift+minus"
     },
     {
-      "id": "Terminal.ClosePane",
-      "keys": "ctrl+shift+w"
-    },
-    {
-      "id": "Terminal.MoveFocusRight",
-      "keys": "alt+right"
+      "id": "Terminal.FindText",
+      "keys": "ctrl+shift+f"
     },
     {
       "id": "Terminal.MoveFocusUp",
       "keys": "alt+up"
     },
     {
-      "id": "Terminal.FindText",
-      "keys": "ctrl+shift+f"
+      "id": "Terminal.MoveFocusRight",
+      "keys": "alt+right"
+    },
+    {
+      "id": "Terminal.ClosePane",
+      "keys": "ctrl+shift+w"
     },
     {
       "id": "Terminal.MoveFocusLeft",
@@ -93,7 +93,7 @@
         "hidden": false,
         "icon": "ms-appx:///ProfileIcons/{61c54bbd-c2c6-5271-96e7-009a87ff44bf}.png",
         "intenseTextStyle": "all",
-        "name": "PowerShell",
+        "name": "dotfiles-Windows",
         "opacity": 75,
         "source": "Windows.Terminal.PowershellCore",
         "startingDirectory": "%USERPROFILE%"
@@ -111,7 +111,7 @@
       {
         "guid": "{8f13d75b-c233-5152-a906-3dac402da8a3}",
         "hidden": false,
-        "name": "kali-linux",
+        "name": "dotfiles-Kali",
         "source": "Microsoft.WSL"
       },
       {
@@ -121,21 +121,31 @@
           "size": 16
         },
         "guid": "{7c3b1e2a-9f4d-4a6b-8c1d-2e3f4a5b6c7d}",
-        "hidden": false,
+        "hidden": true,
         "name": "PowerShell (JetBrains Mono)",
         "startingDirectory": "%USERPROFILE%"
       },
       {
         "guid": "{fbe6c408-11a1-5a95-8ec0-f90dbc2c5f3e}",
-        "hidden": false,
+        "hidden": true,
         "name": "Developer Command Prompt for VS 18",
         "source": "Windows.Terminal.VisualStudio"
       },
       {
         "guid": "{e60e0ce2-fbc8-566c-9333-72a68d46c0b9}",
-        "hidden": false,
+        "hidden": true,
         "name": "Developer PowerShell for VS 18",
         "source": "Windows.Terminal.VisualStudio"
+      },
+      {
+        "commandline": "C:\\WINDOWS\\system32\\wsl.exe --distribution-id {4d88cd54-65bc-41d9-91d3-af0d200bc4c5}",
+        "guid": "{99478915-c96c-4abf-8fc9-76dd203256f7}",
+        "hidden": false,
+        "icon": "C:\\Users\\Garrett\\AppData\\Local\\wsl\\{4d88cd54-65bc-41d9-91d3-af0d200bc4c5}\\shortcut.ico",
+        "name": "dotfiles-Fedora",
+        "pathTranslationStyle": "wsl",
+        "startingDirectory": "~",
+        "tabTitle": "Fedora"
       }
     ]
   },
