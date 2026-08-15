@@ -191,6 +191,40 @@ Describe 'dangling symlink handling' {
     }
 }
 
+Describe 'Link-Item failure handling' {
+    # Regression guard for the ordering bug: the catch block used to restore the
+    # backup FIRST, then attempt the copy fallback — which deleted the just-restored
+    # original to make room. If that copy also failed, the user was left with neither
+    # the original nor the .bak, while the error claimed it "has been restored".
+    It 'attempts the copy fallback before consuming the backup' {
+        $RepoRoot = Split-Path -Parent $PSScriptRoot
+        $src = Get-Content (Join-Path $RepoRoot 'install.ps1') -Raw
+
+        # Isolate Link-Item's catch block and assert the fallback precedes the restore.
+        $catch = [regex]::Match($src, '(?s)\}\s*catch\s*\{\s*\$failure = \$_.*?\n\}').Value
+        $catch | Should -Not -BeNullOrEmpty -Because 'Link-Item should have a catch that captures $failure'
+
+        $fallbackAt = $catch.IndexOf('falling back to copy')
+        $restoreAt  = $catch.IndexOf('restored $Link from backup')
+        $fallbackAt | Should -BeGreaterThan -1
+        $restoreAt  | Should -BeGreaterThan -1
+        $fallbackAt | Should -BeLessThan $restoreAt -Because 'the backup is the last resort and must survive the fallback attempt'
+    }
+    It 'only restores when nothing was wired' {
+        $RepoRoot = Split-Path -Parent $PSScriptRoot
+        $src = Get-Content (Join-Path $RepoRoot 'install.ps1') -Raw
+        $src | Should -Match '\$wired\s*=\s*\$false'
+        $src | Should -Match 'if \(-not \$wired\)'
+    }
+    It 'does not claim a restore it cannot verify' {
+        # The old message was unconditional. It must now depend on what is on disk.
+        $RepoRoot = Split-Path -Parent $PSScriptRoot
+        $src = Get-Content (Join-Path $RepoRoot 'install.ps1') -Raw
+        $src | Should -Not -Match "Your original file \(if any\) has been restored"
+        $src | Should -Match 'restore it by hand'
+    }
+}
+
 Describe 'install.ps1 step counter' {
     It 'declares a StepTotal matching the number of Write-Step calls' {
         # Guards the "[6/5]" off-by-one: StepTotal was 5 while Write-Step was called

@@ -311,33 +311,53 @@ function Link-Item {
             $script:LinkStats.copied++
         }
     } catch {
-        # Restore first, report second: never leave the host worse than we found it.
-        if ($backup -and (Test-Path -LiteralPath $backup)) {
-            # A partial copy may already occupy $Link; clear it so the restore lands.
-            if (Test-Path -LiteralPath $Link) { Remove-Item -LiteralPath $Link -Recurse -Force -ErrorAction SilentlyContinue }
-            Move-Item -LiteralPath $backup -Destination $Link -Force -ErrorAction SilentlyContinue
-            if (Test-Path -LiteralPath $Link) {
-                Write-DotHost "  restored $Link from backup" -Color DarkYellow
-                $script:LinkStats.backedup--
-            }
-        }
-        # A symlink failure is recoverable — copy instead — so one unlinkable row
-        # doesn't abort a whole bootstrap. $ErrorActionPreference is 'Stop' here, so
+        $failure = $_
+        $wired = $false
+
+        # ORDER MATTERS. Try the copy fallback BEFORE restoring the backup, not
+        # after. Restoring first puts the user's file back at $Link, which the copy
+        # then has to delete to make room — so if that copy also failed, BOTH the
+        # original and the .bak were gone and the "has been restored" message was a
+        # lie. The backup is the last resort, so it must stay untouched until we
+        # know nothing else can land.
+        #
+        # A symlink failure is recoverable (copy instead), so one unlinkable row
+        # doesn't abort a whole bootstrap: $ErrorActionPreference is 'Stop' here, so
         # without this the run would die mid-plan with the remaining links unwired.
         if ($CanSymlink) {
-            Write-DotWarn "Could not symlink $Link — falling back to copy." "$_"
+            Write-DotWarn "Could not symlink $Link — falling back to copy." "$failure"
             try {
                 $recurse = (Test-Path -LiteralPath $Target -PathType Container)
+                # Clear any partial artifact the failed attempt left behind. Safe:
+                # the user's own file is still parked at $backup at this point.
                 if (Test-Path -LiteralPath $Link) { Remove-Item -LiteralPath $Link -Recurse -Force -ErrorAction SilentlyContinue }
                 Copy-Item -LiteralPath $Target -Destination $Link -Force -Recurse:$recurse -ErrorAction Stop
                 Write-DotHost "  copied  $Link" -Color Green
                 $script:LinkStats.copied++
+                $wired = $true
             } catch {
-                Write-DotErr "Could not wire $Link at all: $_" 'Your original file (if any) has been restored.'
-                $script:LinkStats.skipped++
+                Write-DotWarn "Copy fallback also failed for $Link." "$_"
             }
-        } else {
-            Write-DotErr "Could not copy $Link : $_" 'Your original file (if any) has been restored.'
+        }
+
+        if (-not $wired) {
+            # Nothing landed at $Link, so put the user's original back. Only now is
+            # it safe to consume $backup.
+            $restored = $false
+            if ($backup -and (Test-Path -LiteralPath $backup)) {
+                if (Test-Path -LiteralPath $Link) { Remove-Item -LiteralPath $Link -Recurse -Force -ErrorAction SilentlyContinue }
+                Move-Item -LiteralPath $backup -Destination $Link -Force -ErrorAction SilentlyContinue
+                $restored = Test-Path -LiteralPath $Link
+                if ($restored) {
+                    Write-DotHost "  restored $Link from backup" -Color DarkYellow
+                    $script:LinkStats.backedup--
+                }
+            }
+            # Say what is actually true on disk, rather than assuming the restore worked.
+            $hint = if ($restored) { 'Your original file has been restored.' }
+                    elseif ($backup) { "Your original file is at $backup — restore it by hand." }
+                    else { 'Nothing was overwritten.' }
+            Write-DotErr "Could not wire $Link : $failure" $hint
             $script:LinkStats.skipped++
         }
     }
@@ -422,10 +442,11 @@ if ($script:DryRun) {
 
 $CanSymlink = Test-CanSymlink
 if (-not $CanSymlink) {
-    # NOT "re-run elevated": scoop's installer refuses to run as administrator, so
-    # elevating to win symlinks costs you the entire package phase. Developer Mode
-    # is the only path that gets both. configuration.dsc.yaml turns it on for you.
-    Write-DotWarn 'Neither Developer Mode nor admin detected — falling back to COPY (changes will not auto-track the repo).' 'For true symlinks enable Developer Mode: winget configure -f configuration.dsc.yaml --accept-configuration-agreements  (Settings > System > For developers also works). Avoid elevating instead — scoop will not install from an admin shell.'
+    # Prefer Developer Mode over elevation. Elevating also works — Install-Packages.ps1
+    # passes -RunAsAdmin so scoop still installs — but scoop itself discourages an
+    # admin install, so Developer Mode is the better of the two. configuration.dsc.yaml
+    # turns it on for you.
+    Write-DotWarn 'Neither Developer Mode nor admin detected — falling back to COPY (changes will not auto-track the repo).' 'For true symlinks enable Developer Mode: winget configure -f configuration.dsc.yaml --accept-configuration-agreements  (Settings > System > For developers also works). Elevating works too, but scoop discourages installing as administrator.'
 }
 
 # Wire the repo-local pre-commit gate when this is a git clone (so contributors
