@@ -202,7 +202,8 @@ the vendored-Core OS repos:
    are synced from `dotfiles-core` (`nvim-sync.ps1` / `starship-sync.ps1`) — fix
    drift **upstream**, then re-sync, so the parity gate stays green.
 3. **Green the gate.** `tests/Invoke-Validation.ps1` is the fast, dependency-free
-   check; `Invoke-Pester -Path tests` is the full suite. `.githooks/pre-commit`
+   check; `pwsh -NoProfile -File tests/Invoke-Tests.ps1` is the full gated suite
+   (the exact command CI runs). `.githooks/pre-commit`
    and CI mirror both.
 
 Bugs and ideas: open an

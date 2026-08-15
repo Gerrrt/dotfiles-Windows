@@ -33,7 +33,7 @@ if ($Help) {
         '  pwsh -NoProfile -File tests/Install-DevDeps.ps1 [-Help]'
         ''
         'Installs, to CurrentUser scope, the same versions CI pins. Idempotent.'
-        'After it runs:  Invoke-Pester -Path tests   (full suite)'
+        'After it runs:  pwsh -NoProfile -File tests/Invoke-Tests.ps1   (full gated suite)'
         '                pwsh -NoProfile -File tests/Invoke-Validation.ps1   (fast gate)'
     ) | ForEach-Object { Write-Host $_ }
     return
@@ -60,4 +60,4 @@ foreach ($name in $pins.Keys) {
 }
 
 Write-Host ''
-Write-Host 'Dev toolchain ready. Run the suite with:  Invoke-Pester -Path tests' -ForegroundColor Green
+Write-Host 'Dev toolchain ready. Run the suite with:  pwsh -NoProfile -File tests/Invoke-Tests.ps1' -ForegroundColor Green

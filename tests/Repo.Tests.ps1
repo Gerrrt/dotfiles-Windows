@@ -354,21 +354,27 @@ Describe 'coverage gate is baseline-driven (B5)' {
         $RepoRoot = Split-Path -Parent $PSScriptRoot
         . (Join-Path $RepoRoot 'tests/CoverageGate.ps1')
         $script:Ci = Get-Content (Join-Path $RepoRoot '.github/workflows/ci.yml') -Raw
+        # The gate moved out of ci.yml into tests/Invoke-Tests.ps1 so the local and
+        # CI runs are the SAME command; assert against the runner, and separately
+        # that CI still delegates to it (tests/RunnerContract.Tests.ps1).
+        $script:Runner = Get-Content (Join-Path $RepoRoot 'tests/Invoke-Tests.ps1') -Raw
         $script:Baseline = Read-CoverageBaseline (Get-Content (Join-Path $RepoRoot 'tests/coverage-baseline.json') -Raw)
     }
     It 'ships a parseable, checked-in baseline (coverage bar + test-case floor)' {
         $script:Baseline.MinTotalTests | Should -BeGreaterThan 0
         $script:Baseline.CoveragePercentTarget | Should -BeGreaterThan 0
     }
-    It 'CI reads the baseline through the pure gate (not hand-edited literals)' {
-        $script:Ci | Should -Match 'Read-CoverageBaseline'
-        $script:Ci | Should -Match 'Get-CoverageGateResult'
-        # The old magic-number floors must not creep back in.
-        $script:Ci | Should -Not -Match '\$minTotal\s*='
-        $script:Ci | Should -Not -Match '\$minFiles\s*='
+    It 'the runner reads the baseline through the pure gate (not hand-edited literals)' {
+        $script:Runner | Should -Match 'Read-CoverageBaseline'
+        $script:Runner | Should -Match 'Get-CoverageGateResult'
+        # The old magic-number floors must not creep back in - in EITHER place.
+        $script:Runner | Should -Not -Match '\$minTotal\s*='
+        $script:Runner | Should -Not -Match '\$minFiles\s*='
+        $script:Ci     | Should -Not -Match '\$minTotal\s*='
+        $script:Ci     | Should -Not -Match '\$minFiles\s*='
     }
-    It 'CI auto-derives the test-file count from the glob (not a stored number)' {
-        $script:Ci | Should -Match 'ExpectedFileCount'
-        $script:Ci | Should -Match '-Recurse -File -Filter \*\.Tests\.ps1'
+    It 'the runner auto-derives the test-file count from the glob (not a stored number)' {
+        $script:Runner | Should -Match 'ExpectedFileCount'
+        $script:Runner | Should -Match '-Recurse -File -Filter \*\.Tests\.ps1'
     }
 }

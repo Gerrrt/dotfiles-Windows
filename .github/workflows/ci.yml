@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 # Pinned dependency versions live in one place so a bump is a one-line, reviewable
-# change (and Dependabot can PR action SHAs). Actions are pinned to a full commit
+# change (and Renovate can PR action SHAs -- see renovate.json). Actions are pinned
 # SHA — a moved tag can't silently change what runs in CI (supply-chain gate).
 env:
   PESTER_VERSION: "5.6.1"
@@ -99,6 +99,22 @@ jobs:
       - name: Validate (parser + JSON + editorconfig, no Gallery needed)
         shell: pwsh
         run: ./tests/Invoke-Validation.ps1
+
+  # --- Markdown lint ----------------------------------------------------------
+  # .markdownlint.jsonc has existed since the README rewrite but NOTHING ran it —
+  # the file's own header said so. A config nothing enforces is worse than none,
+  # because it reads as a guarantee. Kept out of lint-fast so that job stays
+  # dependency-free (no npm); scoped to README.md, matching the config's `files`.
+  markdown-lint:
+    name: Markdownlint (README)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Lint README against .markdownlint.jsonc
+        shell: bash
+        # Pinned like every other tool version here: a floating @latest could fail
+        # the build on a rule that did not exist when the README was written.
+        run: npx --yes markdownlint-cli@0.45.0 --config .markdownlint.jsonc README.md
 
   # --- Lua lint (nvim config) -------------------------------------------------
   # The nvim/ tree had a .luacheckrc but nothing ran it, so the config could rot
@@ -263,54 +279,8 @@ jobs:
           }
       - name: Run tests (with coverage gate)
         shell: pwsh
-        run: |
-          Import-Module Pester -RequiredVersion $env:PESTER_VERSION
-          # The coverage % bar and the test-case FLOOR come from the versioned,
-          # generated baseline (tests/coverage-baseline.json) — not hand-edited
-          # literals here. Refresh it with tests/Update-CoverageBaseline.ps1 after
-          # intentionally removing tests (B5). Read-CoverageBaseline throws if the
-          # file is missing/corrupt, so the gate can't silently go soft.
-          . ./tests/CoverageGate.ps1
-          $baseline = Read-CoverageBaseline (Get-Content ./tests/coverage-baseline.json -Raw)
-          $cfg = New-PesterConfiguration
-          $testPath = './tests'      # single source for the run path + the test-file glob
-          $cfg.Run.Path = $testPath
-          # PassThru (not Run.Exit) so we get the result object back and can gate on
-          # BOTH failures and coverage ourselves with clear messages.
-          $cfg.Run.PassThru = $true
-          $cfg.Output.Verbosity = 'Detailed'
-          # Regression gate on the whole pure-helper surface: 05-lib.ps1 plus the
-          # Dotfiles module's extracted helper files (B7), each fully exercised by
-          # Lib/Wsl/Doctor/Help/Module tests. A drop here means a test was deleted
-          # or a branch was added without a covering test. Grow this list as more
-          # pure helpers reach full coverage.
-          $cfg.CodeCoverage.Enabled = $true
-          $cfg.CodeCoverage.Path = @(
-            './powershell/core/05-lib.ps1'
-            './powershell/Dotfiles/Wsl.Helpers.ps1'
-            './powershell/Dotfiles/Doctor.Helpers.ps1'
-            './powershell/Dotfiles/Help.Helpers.ps1'
-            './powershell/Dotfiles/Modules.Helpers.ps1'
-          )
-          $cfg.CodeCoverage.CoveragePercentTarget = $baseline.CoveragePercentTarget
-          $r = Invoke-Pester -Configuration $cfg
-          $pct = [math]::Round($r.CodeCoverage.CoveragePercent, 1)
-          "Tests: $($r.PassedCount) passed, $($r.FailedCount) failed, $($r.TotalCount) total across $($r.Containers.Count) file(s). Coverage (pure-helper surface): $pct% (target $($baseline.CoveragePercentTarget)%)" | Write-Host
-          # The test-FILE count is auto-derived (not stored): count *.Tests.ps1
-          # under the run path RECURSIVELY (matching Pester's own discovery) and
-          # assert Pester ran EXACTLY that many — a suite that fails to load, or is
-          # removed/renamed, is caught with no number to maintain (issue #29).
-          $expectedFiles = @(Get-ChildItem $testPath -Recurse -File -Filter *.Tests.ps1 -ErrorAction Stop).Count
-          # One pure decision over the whole result: hard failures, the coverage
-          # bar, the exact file match, and the test-case floor. The floor also
-          # guards suites NOT in CoveragePaths (install/uninstall/packages), whose
-          # removed tests wouldn't show up as a coverage drop. TotalCount runs well
-          # past the floor (two -ForEach blocks expand it); it only trips on a real
-          # deletion.
-          $gate = Get-CoverageGateResult -CoveragePercent $r.CodeCoverage.CoveragePercent `
-            -TotalCount $r.TotalCount -FileCount $r.Containers.Count -ExpectedFileCount $expectedFiles `
-            -FailedCount $r.FailedCount -Baseline $baseline
-          if (-not $gate.Passed) {
-            $gate.Failures | ForEach-Object { Write-Host "::error::$_" }
-            throw ("coverage gate failed:`n  " + ($gate.Failures -join "`n  "))
-          }
+        # Single source of truth: the same command a contributor runs locally.
+        # The gate (coverage bar, exact test-file match, test-case floor) lives in
+        # tests/Invoke-Tests.ps1 so "passes locally" and "passes CI" are the same
+        # assertion rather than two that can drift apart unnoticed.
+        run: ./tests/Invoke-Tests.ps1
