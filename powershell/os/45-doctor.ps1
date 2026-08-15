@@ -17,7 +17,7 @@
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
 # provides: dotfiles-doctor, Get-DotRepoRevision
-# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, Get-ScoopBucketHealthResult, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn
+# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, Get-ScoopBucketHealthResult, Get-StarshipVendorDetail, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn
 # NB Get-ScoopBucketFault is deliberately absent: it comes from
 # packages/Check-PackageFreshness.ps1, dot-sourced on demand via its
 # DOTFILES_PKGFRESH_LIBONLY hook, not from the module or an earlier fragment — so it
@@ -164,6 +164,19 @@ function script:Get-DoctorResults {
             $when = (($ref | Where-Object { $_ -match '^date\s*='   } | Select-Object -First 1) -replace '^date\s*=\s*', '')
         }
         $r.Add((New-DoctorResult 'nvim vendor' 'ok' (Get-NvimVendorDetail -Sha "$sha" -When "$when")))
+
+        # starship vendor provenance — the sibling marker for the other mirrored
+        # asset. Reported alongside nvim's so a stale (or silently un-pinned)
+        # starship.toml is visible on the host instead of only in a bot PR diff.
+        $ssRefFile = Join-Path $root 'starship\.core-ref'
+        $ssSha = ''; $ssWhen = ''; $ssPin = ''
+        if (Test-Path $ssRefFile) {
+            $ssRef  = Get-Content $ssRefFile -ErrorAction SilentlyContinue
+            $ssSha  = (($ssRef | Where-Object { $_ -match '^commit\s*=' } | Select-Object -First 1) -replace '^commit\s*=\s*', '')
+            $ssWhen = (($ssRef | Where-Object { $_ -match '^date\s*='   } | Select-Object -First 1) -replace '^date\s*=\s*', '')
+            $ssPin  = (($ssRef | Where-Object { $_ -match '^pinned\s*=' } | Select-Object -First 1) -replace '^pinned\s*=\s*', '')
+        }
+        $r.Add((New-DoctorResult 'starship vendor' 'ok' (Get-StarshipVendorDetail -Sha "$ssSha" -When "$ssWhen" -Pinned "$ssPin")))
     }
 
     # profile symlink

@@ -91,6 +91,31 @@ Describe 'Get-NvimVendorDetail' {
     }
 }
 
+Describe 'Get-StarshipVendorDetail' {
+    It 'formats the short sha + commit date' {
+        $d = Get-StarshipVendorDetail -Sha '23822156e0a81cc' -When '2026-08-05'
+        $d | Should -Match 'core@2382215'
+        $d | Should -Match '2026-08-05'
+    }
+    It 'surfaces an explicit pin — the drift worth seeing' {
+        # starship is the asset that carries a pin, and a silently dropped pin is
+        # exactly what this row exists to make visible on the host.
+        (Get-StarshipVendorDetail -Sha 'abcdef1' -When '2026-08-05' -Pinned 'v4.9.0') |
+            Should -Match 'pinned v4\.9\.0'
+    }
+    It 'does not render the (branch tip) sentinel as a pin' {
+        (Get-StarshipVendorDetail -Sha 'abcdef1' -When '2026-08-05' -Pinned '(branch tip)') |
+            Should -Not -Match 'pinned'
+    }
+    It 'omits the date when it is unknown' {
+        (Get-StarshipVendorDetail -Sha 'abcdef1' -When 'unknown') | Should -Not -Match '\('
+    }
+    It 'reports a missing ref when there is no sha' {
+        (Get-StarshipVendorDetail -Sha '' -When '') | Should -Match 'no vendor ref'
+        (Get-StarshipVendorDetail -Sha '' -When '') | Should -Match 'starship-sync'
+    }
+}
+
 Describe 'Get-DoctorGroup' {
     It 'buckets shell/environment probes' {
         Get-DoctorGroup 'PowerShell 7 (pwsh)' | Should -Be 'Shell & environment'

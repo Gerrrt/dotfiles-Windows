@@ -46,6 +46,24 @@ function Get-NvimSyncRefPlan {
 }
 
 # Library-only hook for the test suite: expose the resolver without syncing.
+# --- Write-CoreRefFile --------------------------------------------------------
+# Write .core-ref with explicit LF and no BOM. `Set-Content -Encoding UTF8` writes
+# CRLF on Windows, so every sync left the working tree with CRLF that .gitattributes
+# then silently normalized on commit — and .core-ref is not in the validator's
+# checked extensions, so nothing ever flagged it. Write the bytes we actually mean.
+# (Kept identical in starship-sync.ps1 — the two scripts are deliberate twins.)
+function Write-CoreRefFile {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(ValueFromPipeline)][string[]]$Line
+    )
+    begin { $acc = [System.Collections.Generic.List[string]]::new() }
+    process { foreach ($l in $Line) { $acc.Add($l) } }
+    end {
+        [System.IO.File]::WriteAllText($Path, (($acc -join "`n") + "`n"), [System.Text.UTF8Encoding]::new($false))
+    }
+}
+
 if ($env:DOTFILES_NVIMSYNC_LIBONLY -eq '1') { return }
 
 $ErrorActionPreference = 'Stop'
@@ -136,7 +154,7 @@ try {
         if ($tag) { "tag    = $tag" }
         "date   = $(if ($when) { $when } else { 'unknown' })"
         "synced = $now"
-    ) | Set-Content -Path $refFile -Encoding UTF8
+    ) | Write-CoreRefFile -Path $refFile
     $shortSha = if ($sha) { $sha.Substring(0, [Math]::Min(7, $sha.Length)) } else { 'unknown' }
     Write-Host "  recorded provenance -> nvim/.core-ref (core@$shortSha)" -ForegroundColor DarkGray
 
