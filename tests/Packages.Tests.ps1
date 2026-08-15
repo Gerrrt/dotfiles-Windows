@@ -406,8 +406,12 @@ Describe 'configuration.dsc.yaml and winget.json' {
         $ids = Get-DscWingetId (Join-Path $RepoRoot 'configuration.dsc.yaml')
         $wg  = Get-Content (Join-Path $RepoRoot 'packages/winget.json') -Raw | ConvertFrom-Json
         foreach ($id in $ids) {
-            $entry = @($wg.packages | Where-Object { $_ -isnot [string] -and $_.id -eq $id }) | Select-Object -First 1
-            if ($entry) {
+            # Check EVERY matching entry, not just the first: a duplicate id whose
+            # second occurrence carried a group tag would otherwise slip through.
+            # (Invoke-Validation.ps1 rejects duplicate winget ids too, but this test
+            # should not depend on another gate to be correct.)
+            $entries = @($wg.packages | Where-Object { $_ -isnot [string] -and $_.id -eq $id })
+            foreach ($entry in $entries) {
                 $entry.group | Should -BeNullOrEmpty -Because "'$id' is in an opt-in group, but configuration.dsc.yaml carries the core baseline only -- an opt-in package would be force-installed on every fresh box"
             }
         }
@@ -427,7 +431,11 @@ Describe 'configuration.dsc.yaml and winget.json' {
         # non-elevated path, and elevating instead makes scoop refuse to install.
         $raw = Get-Content (Join-Path $RepoRoot 'configuration.dsc.yaml') -Raw
         $raw | Should -Match 'Microsoft\.Windows\.Developer/DeveloperMode'
-        $raw | Should -Match 'Ensure:\s*Present'
+        # Scope `Ensure: Present` to the DeveloperMode resource's OWN block. A bare
+        # file-wide match would still pass if DeveloperMode stopped ensuring Present
+        # while some other resource happened to carry the same setting. The tempered
+        # token `(?:(?!- resource:).)*?` refuses to cross into the next resource.
+        $raw | Should -Match '(?s)Microsoft\.Windows\.Developer/DeveloperMode(?:(?!- resource:).)*?Ensure:\s*Present'
     }
 }
 
