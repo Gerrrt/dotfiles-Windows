@@ -91,6 +91,23 @@ function Get-NvimVendorDetail {
     return $detail
 }
 
+# --- pure starship-vendor formatter -------------------------------------------
+# The sibling of Get-NvimVendorDetail for the OTHER mirrored asset. Doctor
+# reported nvim's provenance but not starship's, so a stale starship.toml was
+# invisible on the host. Also surfaces the PIN, because starship is the asset
+# that carries one (`pinned = vX.Y.Z`) and a dropped pin is exactly the drift
+# worth seeing. Pure (the file read lives in the probe), so it is unit-tested.
+function Get-StarshipVendorDetail {
+    [OutputType([string])]
+    param([string]$Sha, [string]$When, [string]$Pinned)
+    if (-not $Sha) { return 'no vendor ref recorded (run starship-sync.ps1)' }
+    $short = if ($Sha.Length -ge 7) { $Sha.Substring(0, 7) } else { $Sha }
+    $detail = "vendored from core@$short"
+    if ($Pinned -and $Pinned -ne '(branch tip)' -and $Pinned -ne 'unknown') { $detail += " (pinned $Pinned)" }
+    if ($When -and $When -ne 'unknown') { $detail += "  ($When)" }
+    return $detail
+}
+
 # --- scoop bucket health -> a doctor result -----------------------------------
 # Pure: takes the faults the host probe found (one string per unhealthy bucket,
 # already formatted by packages/Check-PackageFreshness.ps1's Get-ScoopBucketFault)

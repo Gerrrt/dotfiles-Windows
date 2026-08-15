@@ -47,7 +47,7 @@ Describe 'Dotfiles module exports' {
             'ConvertTo-WslPath',
             'New-DoctorResult', 'Get-DoctorSummary', 'Get-DoctorGroup',
             'Get-FragmentHealthResult', 'Get-DotRepoVersionDetail',
-            'Get-NvimVendorDetail', 'Get-DoctorFixPlan',
+            'Get-NvimVendorDetail', 'Get-StarshipVendorDetail', 'Get-DoctorFixPlan',
             'Get-DotfilesHelpData', 'Get-DotHelpFilters', 'Get-DotHelpFlatLines',
             'Get-DotHelpPrimaryVerb', 'Get-DotLevenshtein', 'Get-DotDidYouMean'
         )) {

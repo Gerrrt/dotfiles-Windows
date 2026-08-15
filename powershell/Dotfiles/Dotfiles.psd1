@@ -51,6 +51,7 @@
         'Get-FragmentHealthResult'
         'Get-DotRepoVersionDetail'
         'Get-NvimVendorDetail'
+        'Get-StarshipVendorDetail'
         'Get-ScoopBucketHealthResult'
         'Get-DoctorFixPlan'
         # help: command catalog + pure derivations (the dothelp verb stays in the fragment)

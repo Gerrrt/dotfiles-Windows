@@ -134,7 +134,10 @@ Write-Host 'editorconfig (final newline / trailing WS / LF):' -ForegroundColor C
 $preEc = $script:fail
 $textExt = '.ps1', '.psm1', '.psd1', '.lua', '.json', '.yml', '.yaml', '.toml', '.md'
 $crlfOk  = '.cmd', '.bat'
-$nameOk  = '.editorconfig', '.gitignore', '.gitignore_global', '.gitconfig', 'config'
+# .core-ref is written by the sync scripts, so it is exactly the kind of generated
+# text that drifts unnoticed — it escaped this gate entirely until a sync was caught
+# leaving CRLF behind that .gitattributes then silently normalized on commit.
+$nameOk  = '.editorconfig', '.gitignore', '.gitignore_global', '.gitconfig', 'config', '.core-ref'
 # Enumerate via `git ls-files` so we check EXACTLY the repo's own tracked text.
 # This skips .git, gitignored paths, untracked build output AND nested git
 # worktrees (e.g. .claude/worktrees/*) — separate checkouts whose line endings
