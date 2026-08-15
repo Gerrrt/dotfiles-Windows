@@ -178,7 +178,8 @@ dotfiles-Windows/
 ├── nvim/                        symlinked to %LOCALAPPDATA%\nvim (mirrors Core)
 ├── wsl/windows.wslconfig.example  canonical host WSL2 config (mirrored net)
 ├── packages/ (scoopfile.json, winget.json, Install-Packages.ps1)
-└── docs/ (TOOLS.md, PORTING-NOTES.md)
+├── docs/ (TOOLS.md, PORTING-NOTES.md, ARCHITECTURE-AUDIT.md, PACKAGE-OWNERSHIP.md)
+└── CONTRIBUTING.md  SECURITY.md  .github/ (workflows, CODEOWNERS, templates)
 ```
 
 `powershell/core/` is native pwsh config (**not** a vendored subtree); `nvim/` and
@@ -206,8 +207,13 @@ the vendored-Core OS repos:
    (the exact command CI runs). `.githooks/pre-commit`
    and CI mirror both.
 
+Full rules — including the ones that bite (ASCII-only `bootstrap.ps1`, the README
+hash pin, `# provides:`/`# requires:` contracts, app-owned `settings.json`) — are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
 Bugs and ideas: open an
-[issue](https://github.com/dotgibson/dotfiles-Windows/issues).
+[issue](https://github.com/dotgibson/dotfiles-Windows/issues). Security problems:
+please report them **privately** — see [SECURITY.md](SECURITY.md).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

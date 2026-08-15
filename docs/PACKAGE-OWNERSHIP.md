@@ -26,14 +26,23 @@ Three CLI tools live in winget on purpose. Do not "fix" these:
 - **`Microsoft.PowerShell`** — the daily-driver shell; wants the system install.
 - **`GNU.Wget2`** — see below.
 
-Python is winget-owned (`C:\Python314`) because the `py` launcher and `uv`
+Python is winget-owned (at whatever prefix winget chose — `C:\Python314` on the
+reference host) because the `py` launcher and `uv`
 resolve to it. `scoopfile.json` deliberately does **not** declare `python` —
 declaring it recreates a duplicate interpreter on every install run.
+
+> **"Reference host" means one specific machine.** Some passages below record what
+> was actually observed on the dev box (install prefixes, an AV registration GUID,
+> which ruby was present) because the *reasoning* only makes sense with the
+> evidence attached. Those are snapshots, not invariants — verify before relying on
+> one on a different machine.
 
 ## `wget` is a shim, not a package
 
 scoop's `wget` manifest downloads from `eternallybored.org`, which resolves to
-a sinkhole (`127.250.0.1`) on this host — a DNS-level filter, not a hosts entry.
+a sinkhole on this host — a DNS-level filter, not a hosts entry (observed as
+`127.250.0.1` here; that address is whatever the local resolver returns, so don't
+treat it as a constant).
 Rather than bypass it, `wget` is a shim at `~/bin/wget.cmd` forwarding to
 winget's `GNU.Wget2`. If you rebuild the host, recreate it:
 
@@ -247,7 +256,9 @@ store, and Malwarebytes' own `mb-clean` support tool has historically cleared
 stale WSC registrations (vendor tooling, running with the privileges intended for
 the job).
 
-A backup of the key is at `~\pkg-backup-2026-07-20\bullguard-av-registration.reg`.
+A backup of the key was taken on the reference host at
+`~\pkg-backup-2026-07-20ullguard-av-registration.reg` — that path exists on that
+machine only; export your own before touching the key.
 
 ## mise owns node, and only node
 
@@ -262,18 +273,20 @@ node = "24"
 
 Node was previously winget's `OpenJS.NodeJS.LTS` and — like python and ruby — was
 never declared in any manifest, so a rebuilt host would not have got it. Moving it
-to a committed `mise.toml` brings it under version control for the first time.
+to a committed `mise/config.toml` brings it under version control for the first time.
 
 Scope stops there deliberately:
 
-- **python** stays winget-owned at `C:\Python314`. mise installs
+- **python** stays winget-owned at winget's prefix (`C:\Python314` on the
+  reference host). mise installs
   `python-build-standalone` builds, which register nothing under
   `HKLM\SOFTWARE\Python\PythonCore` and do not provide the `py` launcher (which is
   separately installed and would break). `uv` is already present and does
   per-project python on Windows better than mise would.
 - **ruby** stays winget-owned. mise's `core:ruby` is built on `ruby-build`, a Unix
   shell toolchain; `mise ls-remote ruby` listing versions does not establish that
-  installing one works. Ruby 4.0.6 is currently the only ruby on the box.
+  installing one works. (On the reference host, as of 2026-07, ruby 4.0.6 was the
+  only one present — a snapshot, not an invariant.)
 - **php / java / julia / composer** stay scoop-owned, declared in
   `packages/scoopfile.json`.
 
