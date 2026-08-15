@@ -20,8 +20,14 @@ name: Release
 
 on:
   push:
+    # Deliberately BROAD. Actions filter patterns are globs, not regex, and the
+    # precise-looking `v[0-9]+.[0-9]+.[0-9]+` leans on `+` meaning "one or more of
+    # the preceding character" — a real feature, but one that reads as regex and
+    # whose failure mode here is the worst kind: the workflow silently never runs.
+    # Match all `v*` and let the shell step below decide precisely, where the rule
+    # is explicit and a non-release tag (`v1`, `v1.6.1`) exits clean, not red.
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -52,18 +58,31 @@ jobs:
       - name: Resolve the tag
         id: tag
         shell: bash
+        # The dispatch input arrives via env, NOT interpolated into the script body.
+        # `${{ }}` substitution is textual and does no shell escaping, so a crafted
+        # input containing a quote or newline could otherwise break out of the
+        # assignment and run arbitrary commands on the runner.
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag='${{ inputs.tag }}'
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
           else
             tag="${GITHUB_REF#refs/tags/}"
           fi
-          case "$tag" in
-            v[0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "::error::'$tag' is not a vX.Y.Z tag."; exit 1 ;;
-          esac
+
+          # Precise validation lives here, not in the trigger's glob. A tag we don't
+          # claim is a clean no-op, not a red X: `v1` and every patch tag are
+          # legitimate refs that simply aren't ours.
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "claim=false" >> "$GITHUB_OUTPUT"
+            echo "'$tag' is not a vX.Y.Z release tag — nothing to do."
+            exit 0
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
           # Patch releases belong to auto-tag.yml (via Core's reusable workflow),
           # which already creates them with generated notes. Claim only .0 tags.
           patch="${tag##*.}"
@@ -78,9 +97,11 @@ jobs:
         if: steps.tag.outputs.claim == 'true'
         id: notes
         shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          tag='${{ steps.tag.outputs.tag }}'
+          tag="$TAG"
           # Pull the block between this version's heading and the next `## [` one.
           # Headings look like:  ## [v1.6.0] - 2026-08-05
           #
@@ -108,9 +129,11 @@ jobs:
       - name: Publish
         if: steps.tag.outputs.claim == 'true'
         shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          tag='${{ steps.tag.outputs.tag }}'
+          tag="$TAG"
           # Idempotent: editing an existing release lets a dispatch re-run fix notes
           # without deleting and recreating (which would break permalinks).
           if gh release view "$tag" >/dev/null 2>&1; then
