@@ -31,13 +31,18 @@ param(
     [string[]]$Path,
     # Report drift without writing. Exit code 1 if any file would change.
     [switch]$Check,
+    # Print the app-owned paths, one per line, and exit. This is the single source
+    # of truth: .githooks/pre-commit calls it to learn which files to re-stage, so
+    # adding a path below really does mean the hook needs no edit.
+    [switch]$ListPaths,
     [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot)
 )
 
 $ErrorActionPreference = 'Stop'
 
-# The tracked configs a GUI app owns and rewrites. Add to this list rather than
-# teaching the hook about new paths — the hook just calls this script.
+# The tracked configs a GUI app owns and rewrites. This is the ONE place the set
+# is declared: the pre-commit hook reads it back via -ListPaths, so adding a path
+# here needs no corresponding hook edit.
 $script:AppOwnedConfigs = @(
     'windows-terminal/settings.json'
 )
@@ -67,6 +72,8 @@ function Get-NormalizedAppJson {
 # The LIBONLY hook the rest of the suite uses: dot-source for the pure helper
 # without running the file loop. See tests/Repo.Tests.ps1 for the convention.
 if ($env:DOTFILES_FORMATAPPJSON_LIBONLY -eq '1') { return }
+
+if ($ListPaths) { $script:AppOwnedConfigs | ForEach-Object { Write-Output $_ }; exit 0 }
 
 $changed = @()
 $missing = @()
