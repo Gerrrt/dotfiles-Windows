@@ -21,6 +21,14 @@ indent_size = 2
 [*.{json,yml,yaml,toml}]
 indent_size = 2
 
+# Windows Terminal owns this file: it re-serializes its own settings with a
+# 4-space indent every time the app exits. Declaring 2 here would mean the whole
+# file churns on every launch, so we match what the app actually writes. The
+# rules the app CAN'T undo (LF, no trailing WS, final newline) are still enforced
+# — tests/Format-AppJson.ps1 restores them via the pre-commit hook.
+[windows-terminal/settings.json]
+indent_size = 4
+
 # Markdown — keep trailing whitespace (hard line breaks) and 2-space.
 [*.md]
 indent_size = 2

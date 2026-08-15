@@ -10,15 +10,32 @@ set -e
 
 root="$(git rev-parse --show-toplevel)"
 script="$root/tests/Invoke-Validation.ps1"
+formatter="$root/tests/Format-AppJson.ps1"
 [ -f "$script" ] || exit 0   # nothing to validate (partial checkout)
 
 # -ExecutionPolicy Bypass (process-scoped) so a restrictive CurrentUser/Machine
-# policy can't block the commit from running this trusted in-repo validator.
+# policy can't block the commit from running these trusted in-repo scripts.
 if command -v pwsh >/dev/null 2>&1; then
-    pwsh -NoProfile -ExecutionPolicy Bypass -File "$script"
+    ps_exe=pwsh
 elif command -v powershell >/dev/null 2>&1; then
-    powershell -NoProfile -ExecutionPolicy Bypass -File "$script"
+    ps_exe=powershell
 else
     echo "pre-commit: no pwsh/powershell on PATH — skipping validation" >&2
     exit 0
 fi
+
+# Normalize the configs a GUI app rewrites (Windows Terminal re-serializes its
+# settings on every exit, reintroducing trailing WS and dropping the final
+# newline). Re-stage only files that were ALREADY staged — never silently pull
+# an unstaged working-tree change into this commit.
+if [ -f "$formatter" ]; then
+    staged="$(git diff --cached --name-only --diff-filter=ACM)"
+    "$ps_exe" -NoProfile -ExecutionPolicy Bypass -File "$formatter" || exit 1
+    for f in $staged; do
+        case "$f" in
+            windows-terminal/settings.json) git add -- "$f" ;;
+        esac
+    done
+fi
+
+"$ps_exe" -NoProfile -ExecutionPolicy Bypass -File "$script"
