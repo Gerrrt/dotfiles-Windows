@@ -1,180 +1,209 @@
 {
-  "$help": "https://aka.ms/terminal-documentation",
-  "$schema": "https://aka.ms/terminal-profiles-schema",
-  "actions": [
-    {
-      "command": {
-        "action": "scrollToMark",
-        "direction": "next"
-      },
-      "id": "User.scrollToMark.2A0DA8E0"
-    },
-    {
-      "command": {
-        "action": "scrollToMark",
-        "direction": "previous"
-      },
-      "id": "User.scrollToMark.D3F0B923"
-    }
-  ],
-  "alwaysShowTabs": true,
-  "copyFormatting": "none",
-  "copyOnSelect": true,
-  "defaultProfile": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
-  "initialCols": 120,
-  "initialRows": 32,
-  "keybindings": [
-    {
-      "id": "Terminal.MoveFocusDown",
-      "keys": "alt+down"
-    },
-    {
-      "id": "Terminal.SplitPaneRight",
-      "keys": "alt+shift+plus"
-    },
-    {
-      "id": "Terminal.SplitPaneDown",
-      "keys": "alt+shift+minus"
-    },
-    {
-      "id": "Terminal.FindText",
-      "keys": "ctrl+shift+f"
-    },
-    {
-      "id": "Terminal.MoveFocusUp",
-      "keys": "alt+up"
-    },
-    {
-      "id": "Terminal.MoveFocusRight",
-      "keys": "alt+right"
-    },
-    {
-      "id": "Terminal.ClosePane",
-      "keys": "ctrl+shift+w"
-    },
-    {
-      "id": "Terminal.MoveFocusLeft",
-      "keys": "alt+left"
-    },
-    {
-      "id": "User.scrollToMark.D3F0B923",
-      "keys": "ctrl+alt+up"
-    },
-    {
-      "id": "User.scrollToMark.2A0DA8E0",
-      "keys": "ctrl+alt+down"
-    }
-  ],
-  "launchMode": "focus",
-  "newTabMenu": [
-    {
-      "type": "remainingProfiles"
-    }
-  ],
-  "profiles": {
-    "defaults": {
-      "antialiasingMode": "cleartype",
-      "colorScheme": "Tokyo Night",
-      "cursorShape": "bar",
-      "font": {
-        "face": "CaskaydiaCove Nerd Font",
-        "size": 16
-      },
-      "opacity": 75,
-      "padding": "0",
-      "scrollbarState": "hidden",
-      "snapOnInput": true,
-      "useAcrylic": true
-    },
-    "list": [
-      {
-        "commandline": "pwsh.exe -NoLogo",
-        "guid": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
-        "hidden": false,
-        "icon": "ms-appx:///ProfileIcons/{61c54bbd-c2c6-5271-96e7-009a87ff44bf}.png",
-        "intenseTextStyle": "all",
-        "name": "dotfiles-Windows",
-        "opacity": 75,
-        "source": "Windows.Terminal.PowershellCore",
-        "startingDirectory": "%USERPROFILE%"
-      },
-      {
-        "guid": "{0caa0dad-35be-5f56-a8ff-afceeeaa6101}",
-        "hidden": true,
-        "name": "Command Prompt"
-      },
-      {
-        "guid": "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}",
-        "hidden": true,
-        "name": "Windows PowerShell"
-      },
-      {
-        "guid": "{8f13d75b-c233-5152-a906-3dac402da8a3}",
-        "hidden": false,
-        "name": "dotfiles-Kali",
-        "source": "Microsoft.WSL"
-      },
-      {
-        "commandline": "pwsh.exe -NoLogo",
-        "font": {
-          "face": "JetBrainsMono Nerd Font",
-          "size": 16
+    "$help": "https://aka.ms/terminal-documentation",
+    "$schema": "https://aka.ms/terminal-profiles-schema",
+    "actions":
+    [
+        {
+            "command":
+            {
+                "action": "scrollToMark",
+                "direction": "previous"
+            },
+            "id": "User.scrollToMark.D3F0B923"
         },
-        "guid": "{7c3b1e2a-9f4d-4a6b-8c1d-2e3f4a5b6c7d}",
-        "hidden": true,
-        "name": "PowerShell (JetBrains Mono)",
-        "startingDirectory": "%USERPROFILE%"
-      },
-      {
-        "guid": "{fbe6c408-11a1-5a95-8ec0-f90dbc2c5f3e}",
-        "hidden": true,
-        "name": "Developer Command Prompt for VS 18",
-        "source": "Windows.Terminal.VisualStudio"
-      },
-      {
-        "guid": "{e60e0ce2-fbc8-566c-9333-72a68d46c0b9}",
-        "hidden": true,
-        "name": "Developer PowerShell for VS 18",
-        "source": "Windows.Terminal.VisualStudio"
-      },
-      {
-        "commandline": "C:\\WINDOWS\\system32\\wsl.exe --distribution-id {4d88cd54-65bc-41d9-91d3-af0d200bc4c5}",
-        "guid": "{99478915-c96c-4abf-8fc9-76dd203256f7}",
-        "hidden": false,
-        "icon": "C:\\Users\\Garrett\\AppData\\Local\\wsl\\{4d88cd54-65bc-41d9-91d3-af0d200bc4c5}\\shortcut.ico",
-        "name": "dotfiles-Fedora",
-        "pathTranslationStyle": "wsl",
-        "startingDirectory": "~",
-        "tabTitle": "Fedora"
-      }
-    ]
-  },
-  "schemes": [
+        {
+            "command":
+            {
+                "action": "scrollToMark",
+                "direction": "next"
+            },
+            "id": "User.scrollToMark.2A0DA8E0"
+        }
+    ],
+    "alwaysShowTabs": true,
+    "copyFormatting": "none",
+    "copyOnSelect": true,
+    "defaultProfile": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+    "initialCols": 120,
+    "initialRows": 32,
+    "keybindings":
+    [
+        {
+            "id": "Terminal.SplitPaneRight",
+            "keys": "alt+shift+plus"
+        },
+        {
+            "id": "Terminal.MoveFocusDown",
+            "keys": "alt+down"
+        },
+        {
+            "id": "Terminal.SplitPaneDown",
+            "keys": "alt+shift+minus"
+        },
+        {
+            "id": "Terminal.ClosePane",
+            "keys": "ctrl+shift+w"
+        },
+        {
+            "id": "Terminal.MoveFocusRight",
+            "keys": "alt+right"
+        },
+        {
+            "id": "Terminal.MoveFocusUp",
+            "keys": "alt+up"
+        },
+        {
+            "id": "Terminal.FindText",
+            "keys": "ctrl+shift+f"
+        },
+        {
+            "id": "Terminal.MoveFocusLeft",
+            "keys": "alt+left"
+        },
+        {
+            "id": "User.scrollToMark.D3F0B923",
+            "keys": "ctrl+alt+up"
+        },
+        {
+            "id": "User.scrollToMark.2A0DA8E0",
+            "keys": "ctrl+alt+down"
+        }
+    ],
+    "launchMode": "focus",
+    "newTabMenu":
+    [
+        {
+            "type": "remainingProfiles"
+        }
+    ],
+    "profiles":
     {
-      "background": "#1A1B26",
-      "black": "#414868",
-      "blue": "#7AA2F7",
-      "brightBlack": "#414868",
-      "brightBlue": "#7AA2F7",
-      "brightCyan": "#7DCFFF",
-      "brightGreen": "#9ECE6A",
-      "brightPurple": "#BB9AF7",
-      "brightRed": "#F7768E",
-      "brightWhite": "#C0CAF5",
-      "brightYellow": "#E0AF68",
-      "cursorColor": "#C0CAF5",
-      "cyan": "#7DCFFF",
-      "foreground": "#A9B1D6",
-      "green": "#9ECE6A",
-      "name": "Tokyo Night",
-      "purple": "#BB9AF7",
-      "red": "#F7768E",
-      "selectionBackground": "#28344A",
-      "white": "#C0CAF5",
-      "yellow": "#E0AF68"
-    }
-  ],
-  "showTabsInTitlebar": true,
-  "themes": [],
-  "useAcrylicInTabRow": false
+        "defaults":
+        {
+            "antialiasingMode": "cleartype",
+            "colorScheme": "Tokyo Night",
+            "cursorShape": "bar",
+            "font":
+            {
+                "face": "CaskaydiaCove Nerd Font",
+                "size": 16
+            },
+            "opacity": 75,
+            "padding": "0",
+            "scrollbarState": "hidden",
+            "snapOnInput": true,
+            "useAcrylic": true
+        },
+        "list":
+        [
+            {
+                "commandline": "pwsh.exe -NoLogo",
+                "guid": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+                "hidden": false,
+                "icon": "ms-appx:///ProfileIcons/{61c54bbd-c2c6-5271-96e7-009a87ff44bf}.png",
+                "intenseTextStyle": "all",
+                "name": "dotfiles-Windows",
+                "opacity": 75,
+                "source": "Windows.Terminal.PowershellCore",
+                "startingDirectory": "%USERPROFILE%"
+            },
+            {
+                "guid": "{0caa0dad-35be-5f56-a8ff-afceeeaa6101}",
+                "hidden": true,
+                "name": "Command Prompt"
+            },
+            {
+                "guid": "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}",
+                "hidden": true,
+                "name": "Windows PowerShell"
+            },
+            {
+                "guid": "{8f13d75b-c233-5152-a906-3dac402da8a3}",
+                "hidden": false,
+                "name": "dotfiles-Kali",
+                "source": "Microsoft.WSL"
+            },
+            {
+                "commandline": "pwsh.exe -NoLogo",
+                "font":
+                {
+                    "face": "JetBrainsMono Nerd Font",
+                    "size": 16
+                },
+                "guid": "{7c3b1e2a-9f4d-4a6b-8c1d-2e3f4a5b6c7d}",
+                "hidden": true,
+                "name": "PowerShell (JetBrains Mono)",
+                "startingDirectory": "%USERPROFILE%"
+            },
+            {
+                "guid": "{fbe6c408-11a1-5a95-8ec0-f90dbc2c5f3e}",
+                "hidden": true,
+                "name": "Developer Command Prompt for VS 18",
+                "source": "Windows.Terminal.VisualStudio"
+            },
+            {
+                "guid": "{e60e0ce2-fbc8-566c-9333-72a68d46c0b9}",
+                "hidden": true,
+                "name": "Developer PowerShell for VS 18",
+                "source": "Windows.Terminal.VisualStudio"
+            },
+            {
+                "commandline": "C:\\WINDOWS\\system32\\wsl.exe --distribution-id {4d88cd54-65bc-41d9-91d3-af0d200bc4c5}",
+                "guid": "{99478915-c96c-4abf-8fc9-76dd203256f7}",
+                "hidden": false,
+                "icon": "%LOCALAPPDATA%\\wsl\\{4d88cd54-65bc-41d9-91d3-af0d200bc4c5}\\shortcut.ico",
+                "name": "dotfiles-Fedora",
+                "pathTranslationStyle": "wsl",
+                "startingDirectory": "~",
+                "tabTitle": "Fedora"
+            },
+            {
+                "guid": "{1777cdf0-b2c4-5a63-a204-eb60f349ea7c}",
+                "hidden": false,
+                "name": "Alpine",
+                "source": "Windows.Terminal.Wsl"
+            },
+            {
+                "guid": "{ffedbb90-d7e6-5875-8129-097b0e3d8f87}",
+                "hidden": false,
+                "name": "kali-linux",
+                "source": "Microsoft.WSL"
+            },
+            {
+                "guid": "{bc2da056-dd06-5879-b969-1dfcefc8d2c7}",
+                "hidden": false,
+                "name": "openSUSE-Tumbleweed",
+                "source": "Windows.Terminal.Wsl"
+            }
+        ]
+    },
+    "schemes":
+    [
+        {
+            "background": "#1A1B26",
+            "black": "#414868",
+            "blue": "#7AA2F7",
+            "brightBlack": "#414868",
+            "brightBlue": "#7AA2F7",
+            "brightCyan": "#7DCFFF",
+            "brightGreen": "#9ECE6A",
+            "brightPurple": "#BB9AF7",
+            "brightRed": "#F7768E",
+            "brightWhite": "#C0CAF5",
+            "brightYellow": "#E0AF68",
+            "cursorColor": "#C0CAF5",
+            "cyan": "#7DCFFF",
+            "foreground": "#A9B1D6",
+            "green": "#9ECE6A",
+            "name": "Tokyo Night",
+            "purple": "#BB9AF7",
+            "red": "#F7768E",
+            "selectionBackground": "#28344A",
+            "white": "#C0CAF5",
+            "yellow": "#E0AF68"
+        }
+    ],
+    "showTabsInTitlebar": true,
+    "themes": [],
+    "useAcrylicInTabRow": false
 }
