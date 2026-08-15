@@ -35,7 +35,7 @@ Linux distros under WSL2. Here's the row, translated.
 - **1Password helpers** — `core/40-op.ps1`, 1:1 with `op.zsh`.
 - **History secret-filtering** — PSReadLine `AddToHistoryHandler` keeps
   password/secret/token/`op …` lines out of the saved history file.
-- **2026 CLI tools + aliases** — xh (`http`), glow (`md`), doggo (`dns`), plus
+- **2026 CLI tools + aliases** — xh (`http`), glow (`gmd`), doggo (`dns`), plus
   sd/gron/gum as their own verbs. scoopfile + guarded aliases.
 - **jnv + `web` (mid-2026 parity)** — `jnv` (scoop Main; the tool Core detects as
   `HAVE_JNV`) is the interactive JSON explorer, an own-command verb like jq/gron
@@ -192,7 +192,10 @@ prompt work. Split by what can be verified off-host vs. what needs a Windows box
   `#()` anywhere, per the bar's hard no-shell-out rule. **Landed but not yet
   render-verified on a Windows host** — reload psmux and eyeball. (`psmux/psmux.conf`)
 
-**Deferred — needs on-device validation (can't be render-tested off-host):**
+**Deferred — needs on-device validation (can't be render-tested off-host).**
+Tracked as **U17** in `docs/ARCHITECTURE-AUDIT.md`; the two "landed but not yet
+render-verified" items below are **U18** and **U19**.
+
 
 - **pwsh transient prompt** — Core collapses finished prompts to a status-colored `❖`
   (`olets/zsh-transient-prompt`). Held deliberately: the only pwsh route is a PSReadLine

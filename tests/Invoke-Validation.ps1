@@ -173,6 +173,17 @@ foreach ($f in $ecFiles) {
             Fail "trailing whitespace: $($f.FullName)"
         }
     }
+    # Stray CONTROL characters. Tab (0x09), LF (0x0A) and CR (0x0D, handled above)
+    # are legitimate; everything else below 0x20 is corruption that renders
+    # invisibly and survives review. This gate exists because a lone 0x08 (backspace)
+    # reached a commit in docs/PACKAGE-OWNERSHIP.md — it ate the 'b' of a
+    # `\bullguard` path, so the documented filename was silently wrong and nothing
+    # here flagged it. Cheap to check, and the failure mode is otherwise unfindable.
+    $ctrl = @($bytes | Where-Object { $_ -lt 0x20 -and $_ -ne 0x09 -and $_ -ne 0x0A -and $_ -ne 0x0D })
+    if ($ctrl.Count) {
+        $codes = ($ctrl | Select-Object -Unique | ForEach-Object { '0x{0:X2}' -f $_ }) -join ', '
+        Fail "control character(s) $codes in: $($f.FullName)"
+    }
 }
 if ($script:fail -eq $preEc) { Pass "$($ecFiles.Count) file(s) match editorconfig basics" }
 

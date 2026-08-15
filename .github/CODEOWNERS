@@ -1,0 +1,7 @@
+# Every change gets the maintainer as a reviewer. This also makes the automation
+# PRs (nvim-sync, starship-sync, auto-tag) request a review automatically instead
+# of sitting unnoticed until someone happens to look at the PR list.
+#
+# NB: the branch ruleset does NOT require Code Owner review — required approvals
+# are 0 so solo self-merge still works. This file is about routing, not gating.
+* @Gerrrt
