@@ -47,6 +47,36 @@ Describe 'the documented local command is the gated one' {
     }
 }
 
+Describe 'Pester version pinning' {
+    # The runner loading a DIFFERENT Pester than CI would reintroduce the exact
+    # local-vs-CI drift it exists to remove — through the fix. Not hypothetical: the
+    # dev box carried 6.1.0, 6.0.1, 6.0.0, 5.6.1 and 3.4.0, so a bare
+    # `Import-Module Pester` picked a different MAJOR than CI's pin.
+    It 'imports Pester with an explicit -RequiredVersion' {
+        $runner = Get-Content (Join-Path $PSScriptRoot 'Invoke-Tests.ps1') -Raw
+        $runner | Should -Match 'Import-Module Pester -RequiredVersion'
+        $runner | Should -Not -Match '(?m)^\s*Import-Module Pester\s*$'
+    }
+    It 'takes the version from the single pin definition, not a literal' {
+        # A literal here would be a THIRD copy of the pin (ci.yml + Install-DevDeps
+        # already exist and are gated against each other in Repo.Tests).
+        $runner = Get-Content (Join-Path $PSScriptRoot 'Invoke-Tests.ps1') -Raw
+        $runner | Should -Match 'Get-DevDepVersions'
+        $runner | Should -Not -Match "PesterVersion\s*=\s*'\d+\.\d+\.\d+'"
+    }
+    It 'actually resolves to the CI-pinned version' {
+        $prev = $env:DOTFILES_DEVDEPS_LIBONLY
+        $env:DOTFILES_DEVDEPS_LIBONLY = '1'
+        try { . (Join-Path $PSScriptRoot 'Install-DevDeps.ps1'); $pin = (Get-DevDepVersions).Pester }
+        finally {
+            if ($null -eq $prev) { Remove-Item Env:DOTFILES_DEVDEPS_LIBONLY -ErrorAction SilentlyContinue }
+            else { $env:DOTFILES_DEVDEPS_LIBONLY = $prev }
+        }
+        $ci = Get-Content (Join-Path (Split-Path -Parent $PSScriptRoot) '.github/workflows/ci.yml') -Raw
+        $ci | Should -Match ([regex]::Escape("PESTER_VERSION: `"$pin`""))
+    }
+}
+
 Describe 'coverage surface' {
     It 'every path the gate measures actually exists' {
         # A renamed helper file would silently drop out of the coverage measurement

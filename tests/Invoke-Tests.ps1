@@ -27,6 +27,10 @@ param(
     # Pester's own verbosity. 'Detailed' matches what CI prints.
     [ValidateSet('None', 'Normal', 'Detailed', 'Diagnostic')]
     [string]$Verbosity = 'Detailed',
+    # Which Pester to load. Defaults to the repo's single pin (Get-DevDepVersions in
+    # tests/Install-DevDeps.ps1, which a Repo.Tests gate keeps equal to ci.yml's
+    # PESTER_VERSION). Override only to reproduce a version-specific problem.
+    [string]$PesterVersion,
     [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot)
 )
 
@@ -52,11 +56,32 @@ if ($env:DOTFILES_INVOKETESTS_LIBONLY -eq '1') { return }
 
 Push-Location $RepoRoot
 try {
-    if (-not (Get-Module -ListAvailable Pester)) {
-        Write-Error 'Pester is not installed. Run: pwsh -NoProfile -File tests/Install-DevDeps.ps1'
+    # Load the PINNED Pester. A bare `Import-Module Pester` loads the HIGHEST
+    # installed version, so a box with several (this one had 6.1.0, 6.0.1, 6.0.0,
+    # 5.6.1 and 3.4.0) runs a different — here, a different MAJOR — Pester than the
+    # runner does. That is exactly the local-vs-CI drift this script exists to
+    # remove, so it would have quietly reintroduced the bug through the fix.
+    #
+    # The version comes from the repo's ONE pin definition rather than a literal
+    # here: Get-DevDepVersions in Install-DevDeps.ps1, which a Repo.Tests gate keeps
+    # equal to ci.yml's PESTER_VERSION.
+    if (-not $PesterVersion) {
+        $prev = $env:DOTFILES_DEVDEPS_LIBONLY
+        $env:DOTFILES_DEVDEPS_LIBONLY = '1'
+        try { . (Join-Path $PSScriptRoot 'Install-DevDeps.ps1'); $PesterVersion = (Get-DevDepVersions).Pester }
+        finally {
+            if ($null -eq $prev) { Remove-Item Env:DOTFILES_DEVDEPS_LIBONLY -ErrorAction SilentlyContinue }
+            else { $env:DOTFILES_DEVDEPS_LIBONLY = $prev }
+        }
+    }
+
+    $have = Get-Module -ListAvailable Pester | Where-Object { $_.Version -eq [version]$PesterVersion }
+    if (-not $have) {
+        Write-Error "Pester $PesterVersion (the pinned version) is not installed. Run: pwsh -NoProfile -File tests/Install-DevDeps.ps1"
         exit 1
     }
-    Import-Module Pester
+    Import-Module Pester -RequiredVersion $PesterVersion
+    Write-Host "Pester $PesterVersion (pinned)" -ForegroundColor DarkGray
 
     . (Join-Path $PSScriptRoot 'CoverageGate.ps1')
 
