@@ -2,17 +2,17 @@
 #  bootstrap.ps1  -  one command to set up dotfiles-Windows on a fresh box.
 #
 #  Run it straight from the web (PowerShell 7+).
-#  RECOMMENDED — verify the published SHA-256 first, so a tampered or MITM'd fetch
+#  RECOMMENDED -- verify the published SHA-256 first, so a tampered or MITM'd fetch
 #  of this `main` script can't run arbitrary code:
 #      $b = irm https://raw.githubusercontent.com/dotgibson/dotfiles-Windows/main/bootstrap.ps1
 #      # compare SHA-256 of $b to the hash pinned in the README, then: $b | iex
 #
-#  Quick (UNVERIFIED) one-liner — only on a network you fully trust:
+#  Quick (UNVERIFIED) one-liner -- only on a network you fully trust:
 #      irm https://raw.githubusercontent.com/dotgibson/dotfiles-Windows/main/bootstrap.ps1 | iex
 #
 #  What it does: clone (or update) the repo, optionally check out a pinned ref,
 #  then hand off to install.ps1. It NEVER pipes a further network script into
-#  iex itself — scoop's installer stays behind install.ps1's existing
+#  iex itself -- scoop's installer stays behind install.ps1's existing
 #  DOTFILES_SCOOP_SHA256 gate, and a pinned DOTFILES_REF makes the clone exact.
 #  Every other DOTFILES_* gate install.ps1/Install-Packages.ps1 honour is passed
 #  through untouched (this just inherits the process environment).
@@ -70,8 +70,28 @@ if ($env:DOTFILES_BOOTSTRAP_LIBONLY -eq '1') { return }
 $ErrorActionPreference = 'Stop'
 
 # --- preflight ----------------------------------------------------------------
+# A stock Windows box has NEITHER pwsh 7 NOR git, so both guards below fire on the
+# machine this script most wants to serve. Point at configuration.dsc.yaml rather
+# than at individual winget commands: it installs pwsh 7 + git + Windows Terminal
+# AND enables Developer Mode in one pass -- and Developer Mode is what lets
+# install.ps1 create real symlinks instead of silently degrading to copies.
+$script:BootstrapStep0 = @(
+    ''
+    'On a fresh box, provision the prerequisites first:'
+    '    winget configure -f configuration.dsc.yaml --accept-configuration-agreements'
+    ''
+    'That needs the repo on disk, so if you have not cloned it yet:'
+    '    winget install Git.Git Microsoft.PowerShell'
+    '    git clone https://github.com/dotgibson/dotfiles-Windows.git ~/dotfiles-Windows'
+    '    cd ~/dotfiles-Windows'
+    '    winget configure -f configuration.dsc.yaml --accept-configuration-agreements'
+    ''
+    'Then reopen PowerShell 7 (pwsh) and re-run this bootstrap.'
+)
+
 if ($PSVersionTable.PSVersion.Major -lt 7) {
-    Write-Warning 'bootstrap targets PowerShell 7+. Install it (winget install Microsoft.PowerShell), reopen pwsh, and re-run.'
+    Write-Warning "bootstrap targets PowerShell 7+; this is $($PSVersionTable.PSVersion)."
+    $script:BootstrapStep0 | ForEach-Object { Write-Host $_ -ForegroundColor Cyan }
     return
 }
 # Windows-only: install.ps1 wires Windows paths (symlinks, %LOCALAPPDATA%, winget).
@@ -82,7 +102,8 @@ if (-not $IsWindows) {
     return
 }
 if (-not (Get-Command git -CommandType Application -ErrorAction SilentlyContinue)) {
-    Write-Warning 'git is required to bootstrap. Install Git (winget install Git.Git) and re-run.'
+    Write-Warning 'git is required to bootstrap, and is not on PATH.'
+    $script:BootstrapStep0 | ForEach-Object { Write-Host $_ -ForegroundColor Cyan }
     return
 }
 
@@ -106,7 +127,7 @@ if ($action -eq 'clone') {
     git clone -- $repo $dir
     if ($LASTEXITCODE -ne 0) { Write-Error "git clone failed (exit $LASTEXITCODE)."; return }
 } else {
-    # An existing checkout at $dir is only trustworthy if it's actually THIS repo —
+    # An existing checkout at $dir is only trustworthy if it's actually THIS repo --
     # otherwise we'd run whatever install.ps1 happens to live there. Skip the check
     # only when the user explicitly pointed us at a repo via DOTFILES_REPO.
     if (-not $env:DOTFILES_REPO) {
@@ -115,12 +136,12 @@ if ($action -eq 'clone') {
             Write-Error "$dir is a git checkout of '$origin', not dotfiles-Windows. Set DOTFILES_DIR to an empty path, or DOTFILES_REPO to confirm."; return
         }
     }
-    Write-Host '  (existing checkout — fetching latest)' -ForegroundColor DarkGray
+    Write-Host '  (existing checkout -- fetching latest)' -ForegroundColor DarkGray
     git -C $dir fetch --all --tags
     if ($LASTEXITCODE -ne 0) { Write-Error "git fetch failed (exit $LASTEXITCODE)."; return }
     if (-not $ref) {
         git -C $dir pull --ff-only
-        if ($LASTEXITCODE -ne 0) { Write-Error "git pull failed (exit $LASTEXITCODE) — resolve it, then re-run."; return }
+        if ($LASTEXITCODE -ne 0) { Write-Error "git pull failed (exit $LASTEXITCODE) -- resolve it, then re-run."; return }
     }
 }
 
@@ -138,11 +159,11 @@ if (-not (Test-Path $installer)) { Write-Error "install.ps1 not found in $dir - 
 # --- hand off to the real installer ------------------------------------------
 # Bootstrap itself ran via `iex`, but install.ps1 is a script FILE: under a strict
 # AllSigned/RemoteSigned policy that local script could be blocked. Relax it for
-# THIS process only (best-effort — never persisted), so the one-liner just works.
+# THIS process only (best-effort -- never persisted), so the one-liner just works.
 try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop } catch { }
 # @(...) is load-bearing. Get-BootstrapInstallArgs returns @() when no extra args
 # are set, and PowerShell unrolls an empty array on the output stream to $null on
-# assignment — so a bare `$installArgs = Get-BootstrapInstallArgs` yields $null.
+# assignment -- so a bare `$installArgs = Get-BootstrapInstallArgs` yields $null.
 # Splatting $null passes a literal $null POSITIONAL argument, and install.ps1 takes
 # only switches, so it fails with "A positional parameter cannot be found that
 # accepts argument '$null'." Wrapping forces a real (possibly empty) array; the

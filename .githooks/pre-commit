@@ -10,15 +10,50 @@ set -e
 
 root="$(git rev-parse --show-toplevel)"
 script="$root/tests/Invoke-Validation.ps1"
+formatter="$root/tests/Format-AppJson.ps1"
 [ -f "$script" ] || exit 0   # nothing to validate (partial checkout)
 
 # -ExecutionPolicy Bypass (process-scoped) so a restrictive CurrentUser/Machine
-# policy can't block the commit from running this trusted in-repo validator.
+# policy can't block the commit from running these trusted in-repo scripts.
 if command -v pwsh >/dev/null 2>&1; then
-    pwsh -NoProfile -ExecutionPolicy Bypass -File "$script"
+    ps_exe=pwsh
 elif command -v powershell >/dev/null 2>&1; then
-    powershell -NoProfile -ExecutionPolicy Bypass -File "$script"
+    ps_exe=powershell
 else
     echo "pre-commit: no pwsh/powershell on PATH — skipping validation" >&2
     exit 0
 fi
+
+# Normalize the configs a GUI app rewrites (Windows Terminal re-serializes its
+# settings on every exit, reintroducing trailing WS and dropping the final
+# newline).
+#
+# Re-staging is deliberately narrow. A file is re-added only when it was ALREADY
+# staged AND has no unstaged changes of its own. That second condition matters:
+# for a PARTIALLY staged file (some hunks staged, others not), `git add` stages
+# the whole working-tree version — silently pulling in work the user chose to
+# leave out. In that case we skip the re-add and say so, and the validator below
+# fails on the still-unnormalized staged content, which is the honest outcome.
+#
+# The path list comes from the formatter itself (-ListPaths), so it is declared
+# in exactly one place.
+if [ -f "$formatter" ]; then
+    app_paths="$("$ps_exe" -NoProfile -ExecutionPolicy Bypass -File "$formatter" -ListPaths)" || exit 1
+    staged="$(git diff --cached --name-only --diff-filter=ACM)"
+    # Capture BEFORE formatting — the formatter creates unstaged changes itself.
+    dirty="$(git diff --name-only)"
+
+    "$ps_exe" -NoProfile -ExecutionPolicy Bypass -File "$formatter" || exit 1
+
+    for f in $app_paths; do
+        echo "$staged" | grep -qxF "$f" || continue          # wasn't staged: leave it alone
+        if echo "$dirty" | grep -qxF "$f"; then
+            echo "pre-commit: $f is partially staged — not re-adding it." >&2
+            echo "            Stage or stash your other changes to it, then re-commit." >&2
+            continue
+        fi
+        git add -- "$f"
+    done
+fi
+
+"$ps_exe" -NoProfile -ExecutionPolicy Bypass -File "$script"

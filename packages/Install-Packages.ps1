@@ -78,6 +78,26 @@ if (-not (Get-Command Write-DotHost -ErrorAction SilentlyContinue)) {
     # Used by Write-DotInstallProgress; mirror 05-lib's NO_COLOR/TERM=dumb check so
     # the progress bar stays safe even in this degraded (lib-missing) mode.
     function Test-DotColor { return ((-not $env:NO_COLOR) -and ($env:TERM -ne 'dumb')) }
+    # The scoop-installer integrity gate (DOTFILES_SCOOP_SHA256) depends on this;
+    # without a shim a lib-less run throws CommandNotFound at exactly the moment it
+    # is trying to VERIFY a downloaded script, which is the worst place to fail open.
+    function Get-DotStringSha256 {
+        [OutputType([string])]
+        param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try { (($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Text)) | ForEach-Object { $_.ToString('x2') }) -join '') }
+        finally { $sha.Dispose() }
+    }
+    # Degrade the spinner to a plain inline call — same result, no animation.
+    function Invoke-DotSpinner {
+        param(
+            [Parameter(Mandatory)][string]$Label,
+            [Parameter(Mandatory)][scriptblock]$Script,
+            [object[]]$ArgumentList = @()
+        )
+        Write-Host "  $Label..."
+        & $Script @ArgumentList
+    }
 }
 
 # Tiny progress line: "  [n/total] -> name" so a long, silent install doesn't look
@@ -343,6 +363,15 @@ if (-not $SkipScoop) {
         Write-Host 'Installing scoop...' -ForegroundColor Cyan
         try {
             Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+            # TLS 1.2 explicitly. Under .NET Framework (Windows PowerShell 5.1, which
+            # install.ps1 tolerates with only a warning) SecurityProtocol defaults to
+            # SSL3|TLS1.0 on any host without the SchUseStrongCrypto registry value,
+            # and get.scoop.sh requires 1.2 — the failure is an opaque "Could not
+            # create SSL/TLS secure channel". Harmless no-op on pwsh 7/.NET Core.
+            try {
+                [Net.ServicePointManager]::SecurityProtocol =
+                    [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+            } catch { }
             # Fetch the installer to a string first so it can be integrity-checked
             # before it runs, instead of piping the network straight into iex. Set
             # DOTFILES_SCOOP_SHA256 to the expected hash to gate execution; without
@@ -356,9 +385,29 @@ if (-not $SkipScoop) {
                 }
                 Write-DotOk 'scoop installer hash verified.'
             }
-            $scoopInstaller | Invoke-Expression
+            # scoop's installer REFUSES to run elevated unless it is passed -RunAsAdmin,
+            # so a bare `| iex` (which can take no arguments) aborts the whole package
+            # phase for anyone who followed the old "re-run elevated" advice. Build it
+            # as a scriptblock instead so the flag can be supplied when we are admin.
+            $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+                [Security.Principal.WindowsBuiltInRole]::Administrator)
+            if ($isAdmin) {
+                Write-DotWarn 'Elevated shell detected — installing scoop with -RunAsAdmin.' 'Developer Mode is the preferred path; scoop discourages an admin install.'
+                & ([scriptblock]::Create($scoopInstaller)) -RunAsAdmin
+            } else {
+                & ([scriptblock]::Create($scoopInstaller))
+            }
         } catch {
             Write-DotErr "scoop bootstrap failed: $_"
+            return
+        }
+
+        # The installer updates $env:PATH in THIS runspace, but if that ever fails we
+        # would fall through and every `scoop install` below would report
+        # command-not-found — ~75 entries in $failed instead of one clear cause.
+        # $ErrorActionPreference is 'Continue' here, so nothing else would stop us.
+        if (-not (Get-Command scoop -CommandType Application -ErrorAction SilentlyContinue)) {
+            Write-DotErr 'scoop installed but is not on PATH in this session.' 'Open a new shell and re-run: .\install.ps1'
             return
         }
     }
