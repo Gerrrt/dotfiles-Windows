@@ -257,7 +257,7 @@ stale WSC registrations (vendor tooling, running with the privileges intended fo
 the job).
 
 A backup of the key was taken on the reference host at
-`~\pkg-backup-2026-07-20ullguard-av-registration.reg` — that path exists on that
+`~\pkg-backup-2026-07-20\bullguard-av-registration.reg` — that path exists on that
 machine only; export your own before touching the key.
 
 ## mise owns node, and only node
