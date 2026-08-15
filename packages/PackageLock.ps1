@@ -123,6 +123,30 @@ function ConvertFrom-WingetExport {
     $map
 }
 
+# --- Get-DscWingetId ----------------------------------------------------------
+# The winget package ids declared in configuration.dsc.yaml, the file the README
+# now names as Step 0 for a fresh box. That baseline and packages/winget.json (the
+# manifest Install-Packages.ps1 actually reads) describe overlapping sets with
+# nothing keeping them in step, so tests/Packages.Tests.ps1 gates them against each
+# other and calls this.
+#
+# Parsed with a regex rather than a YAML module to keep the offline/dependency-free
+# promise the rest of the package tooling makes. A winget id is Publisher.Package —
+# at least one dot, no whitespace — which is exactly what separates the
+# `settings: id:` values from the DSC *resource* ids (os-version, developer-mode,
+# windows-terminal), none of which contain a dot.
+function Get-DscWingetId {
+    [OutputType([string[]])]
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return @() }
+    return @(
+        Get-Content -LiteralPath $Path |
+            ForEach-Object { if ($_ -match '^\s*id:\s*(\S+)\s*$') { $Matches[1] } } |
+            Where-Object { $_ -match '^[^\s.]+(\.[^\s.]+)+$' } |
+            Sort-Object -Unique
+    )
+}
+
 # --- Get-UnpinnableWingetId ---------------------------------------------------
 # winget ids that can NEVER appear in the lock, by design — not because someone
 # forgot to re-run the generator. Some apps ship their own updater and move out

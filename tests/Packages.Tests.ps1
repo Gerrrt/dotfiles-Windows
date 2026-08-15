@@ -366,6 +366,79 @@ Describe 'packages.lock.json drift' {
     }
 }
 
+# --- the one manifest overlap that had no gate --------------------------------
+# scoop<->lock, winget<->lock and winget.json<->winget-import.json are all already
+# guarded above. configuration.dsc.yaml was not, and it matters more now that the
+# README makes `winget configure -f configuration.dsc.yaml` the documented Step 0
+# for a fresh box: the DSC baseline and the manifest the installer actually reads
+# could diverge silently, so Step 0 would provision a different set than
+# Install-Packages.ps1 expects.
+#
+# The invariant comes from configuration.dsc.yaml's own header: it "carries the
+# CORE, untagged baseline only — the opt-in gui/desktop groups live in
+# winget-import.json / winget.json". So every winget id it declares must (a) exist
+# in winget.json and (b) be an UNTAGGED core entry there.
+Describe 'configuration.dsc.yaml and winget.json' {
+    # Dependency-free parse, matching Invoke-Validation.ps1's house style (no YAML
+    # module on the runner). A winget id is Publisher.Package -- at least one dot and
+    # no whitespace -- which cleanly separates the `settings: id:` values from the DSC
+    # *resource* ids (os-version, developer-mode, windows-terminal), none of which
+    # contain a dot. Resolved inside each It, like the other Describes in this file.
+    It 'finds the DSC winget ids (guards the parser itself)' {
+        # If the parse silently returned nothing, every assertion below would pass
+        # vacuously. Pin that it actually found something.
+        $ids = Get-DscWingetId (Join-Path $RepoRoot 'configuration.dsc.yaml')
+        $ids.Count | Should -BeGreaterThan 0
+        $ids | Should -Contain 'Microsoft.PowerShell'
+        $ids | Should -Contain 'Git.Git'
+    }
+
+    It 'declares every DSC package in winget.json too' {
+        $ids = Get-DscWingetId (Join-Path $RepoRoot 'configuration.dsc.yaml')
+        $wg  = Get-Content (Join-Path $RepoRoot 'packages/winget.json') -Raw | ConvertFrom-Json
+        $known = @($wg.packages | ForEach-Object { if ($_ -is [string]) { $_ } else { $_.id } })
+        foreach ($id in $ids) {
+            $known | Should -Contain $id -Because "configuration.dsc.yaml installs '$id' but packages/winget.json does not list it -- Step 0 and Install-Packages.ps1 would provision different sets"
+        }
+    }
+
+    It 'keeps the DSC baseline to UNTAGGED core entries' {
+        $ids = Get-DscWingetId (Join-Path $RepoRoot 'configuration.dsc.yaml')
+        $wg  = Get-Content (Join-Path $RepoRoot 'packages/winget.json') -Raw | ConvertFrom-Json
+        foreach ($id in $ids) {
+            # Check EVERY matching entry, not just the first: a duplicate id whose
+            # second occurrence carried a group tag would otherwise slip through.
+            # (Invoke-Validation.ps1 rejects duplicate winget ids too, but this test
+            # should not depend on another gate to be correct.)
+            $entries = @($wg.packages | Where-Object { $_ -isnot [string] -and $_.id -eq $id })
+            foreach ($entry in $entries) {
+                $entry.group | Should -BeNullOrEmpty -Because "'$id' is in an opt-in group, but configuration.dsc.yaml carries the core baseline only -- an opt-in package would be force-installed on every fresh box"
+            }
+        }
+    }
+
+    It 'installs the two prerequisites bootstrap.ps1 cannot provide itself' {
+        # bootstrap.ps1 hard-returns without these, and its failure message points the
+        # user at configuration.dsc.yaml -- so the DSC file has to actually deliver
+        # them or that advice is a dead end.
+        $ids = Get-DscWingetId (Join-Path $RepoRoot 'configuration.dsc.yaml')
+        $ids | Should -Contain 'Git.Git'
+        $ids | Should -Contain 'Microsoft.PowerShell'
+    }
+
+    It 'enables Developer Mode, which is what makes symlinks work without admin' {
+        # install.ps1's Test-CanSymlink requires pwsh 7 OR admin; Developer Mode is the
+        # non-elevated path, and elevating instead makes scoop refuse to install.
+        $raw = Get-Content (Join-Path $RepoRoot 'configuration.dsc.yaml') -Raw
+        $raw | Should -Match 'Microsoft\.Windows\.Developer/DeveloperMode'
+        # Scope `Ensure: Present` to the DeveloperMode resource's OWN block. A bare
+        # file-wide match would still pass if DeveloperMode stopped ensuring Present
+        # while some other resource happened to carry the same setting. The tempered
+        # token `(?:(?!- resource:).)*?` refuses to cross into the next resource.
+        $raw | Should -Match '(?s)Microsoft\.Windows\.Developer/DeveloperMode(?:(?!- resource:).)*?Ensure:\s*Present'
+    }
+}
+
 Describe 'winget-import.json drift' {
     # The committed packages/winget-import.json is a GENERATED projection of
     # winget.json (Export-WingetImport.ps1). It went stale silently before — a winget
