@@ -1,0 +1,144 @@
+name: Release
+
+# Publish the GitHub Release for a DELIBERATE (minor/major) tag from the hand-written
+# CHANGELOG section, so the release notes stop being copy-pasted by hand.
+#
+# This composes with auto-tag.yml rather than competing with it. The two cover
+# different halves, and the split is visible in the existing releases:
+#
+#   patch tags (v1.6.1, v1.5.1, ...)  cut + released by the bot via Core's
+#                                      auto-tag-call.yml, auto-generated notes,
+#                                      NO CHANGELOG section
+#   minor/major (v1.6.0, v1.5.0, ...) tagged by hand off a release/vX.Y.Z branch,
+#                                      released by hand with the CHANGELOG prose
+#                                      (40-50 KB of it)
+#
+# So: this workflow only claims vX.Y.0 / vX.0.0. A patch tag exits cleanly and
+# leaves the bot alone. For a tag it DOES claim, a missing CHANGELOG section is a
+# hard failure — that gate is the point. It keeps the changelog honest for exactly
+# the releases whose value is the hand-written prose a generator cannot produce.
+
+on:
+  push:
+    # Deliberately BROAD. Actions filter patterns are globs, not regex, and the
+    # precise-looking `v[0-9]+.[0-9]+.[0-9]+` leans on `+` meaning "one or more of
+    # the preceding character" — a real feature, but one that reads as regex and
+    # whose failure mode here is the worst kind: the workflow silently never runs.
+    # Match all `v*` and let the shell step below decide precisely, where the rule
+    # is explicit and a non-release tag (`v1`, `v1.6.1`) exits clean, not red.
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to (re)publish, e.g. v1.7.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write # creating a Release writes to the repo
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish release
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'dotgibson'
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # need the tag and full history for the checkout below
+
+      - name: Resolve the tag
+        id: tag
+        shell: bash
+        # The dispatch input arrives via env, NOT interpolated into the script body.
+        # `${{ }}` substitution is textual and does no shell escaping, so a crafted
+        # input containing a quote or newline could otherwise break out of the
+        # assignment and run arbitrary commands on the runner.
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          else
+            tag="${GITHUB_REF#refs/tags/}"
+          fi
+
+          # Precise validation lives here, not in the trigger's glob. A tag we don't
+          # claim is a clean no-op, not a red X: `v1` and every patch tag are
+          # legitimate refs that simply aren't ours.
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "claim=false" >> "$GITHUB_OUTPUT"
+            echo "'$tag' is not a vX.Y.Z release tag — nothing to do."
+            exit 0
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          # Patch releases belong to auto-tag.yml (via Core's reusable workflow),
+          # which already creates them with generated notes. Claim only .0 tags.
+          patch="${tag##*.}"
+          if [ "$patch" != "0" ]; then
+            echo "claim=false" >> "$GITHUB_OUTPUT"
+            echo "$tag is a patch tag — auto-tag.yml owns it. Nothing to do."
+          else
+            echo "claim=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract the CHANGELOG section
+        if: steps.tag.outputs.claim == 'true'
+        id: notes
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="$TAG"
+          # Pull the block between this version's heading and the next `## [` one.
+          # Headings look like:  ## [v1.6.0] - 2026-08-05
+          #
+          # index()/literal matching, NOT a dynamic regex: a tag interpolated into a
+          # regex makes "[v1.6.0]" a character CLASS, which silently matches nothing
+          # and would publish an empty release. Verified against the real CHANGELOG
+          # (v1.6.0 -> 9733 bytes, v1.5.0 -> 12890, v1.6.1 -> 0 as expected).
+          body="$(awk -v tag="$tag" '
+            index($0, "## [" tag "]") == 1 { grab = 1; next }
+            grab && index($0, "## [") == 1 { exit }
+            grab                            { print }
+          ' CHANGELOG.md)"
+
+          # Trim leading/trailing blank lines.
+          body="$(printf '%s\n' "$body" | sed -e '/./,$!d' | tac | sed -e '/./,$!d' | tac)"
+
+          if [ -z "$body" ]; then
+            echo "::error::CHANGELOG.md has no '## [$tag]' section (or it is empty)."
+            echo "::error::A minor/major release is published FROM the changelog — write the entry, then re-run."
+            exit 1
+          fi
+          printf '%s\n' "$body" > release-notes.md
+          echo "Extracted $(wc -c < release-notes.md) bytes of notes."
+
+      - name: Publish
+        if: steps.tag.outputs.claim == 'true'
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="$TAG"
+          # Idempotent: editing an existing release lets a dispatch re-run fix notes
+          # without deleting and recreating (which would break permalinks).
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag exists — updating its notes."
+            gh release edit "$tag" --notes-file release-notes.md
+          else
+            gh release create "$tag" --title "$tag" --notes-file release-notes.md --verify-tag
+          fi
