@@ -13,6 +13,13 @@
 #    .\starship-sync.ps1 -CoreLocal C:\src\dotfiles-core  # copy from an existing clone instead
 #    .\starship-sync.ps1 -Branch dev                      # sync from a different Core branch
 #    .\starship-sync.ps1 -Ref v2.1.0                       # pin an exact Core commit/tag (reproducible)
+#    .\starship-sync.ps1 -Force                           # abandon a recorded pin, track the branch tip
+#
+#  PINS ARE STICKY. Once a run records `pinned = vX.Y.Z` in starship/.core-ref, a
+#  later bare run honours it rather than silently dragging the file to the branch
+#  tip — the scheduled workflow invokes this script with no arguments, so without
+#  that a deliberate pin would be reverted with nothing in the diff to say so.
+#  Use -Force to deliberately drop the pin and resume tracking -Branch.
 #
 #  After it runs: review `git diff starship/`, then commit.
 # ============================================================================
