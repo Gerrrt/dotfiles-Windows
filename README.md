@@ -100,10 +100,32 @@ than vendoring it:
 <!-- GETTING STARTED -->
 ## Getting Started
 
+### Step 0 — provision a fresh box
+
+Stock Windows ships **neither `git` nor PowerShell 7**, so the one-liner below
+cannot run on a brand-new machine until you lay the foundation. Do that first:
+
+```powershell
+winget install Git.Git Microsoft.PowerShell
+git clone https://github.com/dotgibson/dotfiles-Windows.git ~/dotfiles-Windows
+cd ~/dotfiles-Windows
+winget configure -f configuration.dsc.yaml --accept-configuration-agreements
+```
+
+`configuration.dsc.yaml` is idempotent and reconciling: it installs Windows
+Terminal, PowerShell 7, WSL and Git, **and enables Developer Mode** — which is what
+lets `install.ps1` create real symlinks instead of degrading to copies.
+
+> Enable Developer Mode rather than running elevated. Scoop's installer refuses to
+> run from an administrator shell, so elevating to win symlinks costs you the
+> entire package phase.
+
+Then **reopen PowerShell 7** (`pwsh`) and continue below.
+
 ### Prerequisites
 
-**PowerShell 7** (`pwsh`) and **Developer Mode** enabled (or run elevated) so
-symlinks work. The bootstrap needs `git` and `pwsh` 7+.
+**PowerShell 7** (`pwsh`), **`git`**, and **Developer Mode** — all provided by
+Step 0. Already have them? Skip straight to the install.
 
 ### Installation
 
@@ -112,12 +134,11 @@ irm https://raw.githubusercontent.com/dotgibson/dotfiles-Windows/main/bootstrap.
 ```
 
 The one-liner is **integrity-gated** — verify the script against its pinned
-SHA-256 before piping to `iex` (the docs show the hash-checked form). Or clone and
-run the installer manually:
+SHA-256 before piping to `iex` (the docs show the hash-checked form). Or, from the
+clone you already made in Step 0, run the installer directly:
 
 ```powershell
-git clone https://github.com/dotgibson/dotfiles-Windows.git
-cd dotfiles-Windows
+cd ~/dotfiles-Windows
 .\install.ps1                # packages + symlinks (idempotent)
 .\install.ps1 -SkipPackages  # just re-wire links
 .\install.ps1 -DryRun        # preview; -Help for the full option list
@@ -126,7 +147,7 @@ cd dotfiles-Windows
 Then open a **new** PowerShell window, set your name/email in `~/.gitconfig.local`,
 and review `~/.wslconfig` + `wsl --shutdown` to apply mirrored networking.
 
-<!-- bootstrap.ps1 SHA-256 (LF-normalized): e78a5cca35831c1b8602d0e4ce9ef2b1428594ba80a3f845112e7461a3d2e1cd -->
+<!-- bootstrap.ps1 SHA-256 (LF-normalized): 09b31819217ce71a0ae241fa41ac206f48b148e49bb98b5adc1af0f6775745e5 -->
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

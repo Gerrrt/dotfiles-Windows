@@ -62,6 +62,23 @@ Describe 'Get-BootstrapInstallArgs' {
     }
 }
 
+Describe 'bootstrap.ps1 is ASCII-only' {
+    It 'contains no non-ASCII byte, so Windows PowerShell 5.1 can parse it from disk' {
+        # bootstrap.ps1 is stored UTF-8 with NO BOM. Windows PowerShell 5.1 reads a
+        # BOM-less file as the ANSI codepage, so any non-ASCII character (an em-dash
+        # in a comment is enough) becomes mojibake and the PARSER dies with a
+        # misleading "Missing closing '}'" — before the pwsh-7 version guard can run.
+        # 5.1 is precisely the audience of that guard, and README Step 0 tells people
+        # to clone first, so `powershell -File bootstrap.ps1` is a real entry point.
+        # `irm | iex` is unaffected (the HTTP layer decodes UTF-8), but this file has
+        # to work both ways. Keep it ASCII; every other script may use unicode.
+        $path  = Join-Path $script:RepoRoot 'bootstrap.ps1'
+        $bytes = [System.IO.File]::ReadAllBytes($path)
+        $bad   = @($bytes | Where-Object { $_ -gt 127 })
+        $bad.Count | Should -Be 0 -Because 'bootstrap.ps1 must parse under PowerShell 5.1 as well as 7'
+    }
+}
+
 Describe 'bootstrap.ps1 integrity pin (B10)' {
     It 'README pins the current LF-normalized SHA-256 of bootstrap.ps1' {
         # The integrity-gated one-liner in the README only works if the published

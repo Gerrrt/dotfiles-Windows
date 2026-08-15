@@ -151,3 +151,68 @@ Describe 'Get-InstallUsage' {
         }
     }
 }
+
+Describe 'Test-CanSymlink' {
+    # The capability matrix. The bug this guards: Developer Mode alone used to
+    # return $true on Windows PowerShell 5.1, whose New-Item does NOT pass
+    # SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE — so every link threw AFTER
+    # Link-Item had already moved the user's real config to a .bak.
+    It 'is true for an administrator regardless of edition or Developer Mode' {
+        Test-CanSymlink -Edition 'Desktop' -IsAdminOverride $true -DevModeOverride 0 | Should -BeTrue
+        Test-CanSymlink -Edition 'Core'    -IsAdminOverride $true -DevModeOverride 0 | Should -BeTrue
+    }
+    It 'is true for Developer Mode on pwsh 7 (Core) without admin' {
+        Test-CanSymlink -Edition 'Core' -IsAdminOverride $false -DevModeOverride 1 | Should -BeTrue
+    }
+    It 'is FALSE for Developer Mode on Windows PowerShell 5.1 without admin' {
+        Test-CanSymlink -Edition 'Desktop' -IsAdminOverride $false -DevModeOverride 1 | Should -BeFalse
+    }
+    It 'is false with neither admin nor Developer Mode' {
+        Test-CanSymlink -Edition 'Core'    -IsAdminOverride $false -DevModeOverride 0 | Should -BeFalse
+        Test-CanSymlink -Edition 'Desktop' -IsAdminOverride $false -DevModeOverride 0 | Should -BeFalse
+    }
+}
+
+Describe 'dangling symlink handling' {
+    It 'Test-Path SEES a dangling symlink, so the backup gate is not fooled' {
+        # Pins the platform behaviour Link-Item's backup gate relies on. Contrary to
+        # the POSIX intuition (where -e follows the link and a broken one is false),
+        # Windows Test-Path reports the reparse point itself, so a dead link is
+        # backed up and replaced like any other file. If a future PowerShell ever
+        # changes this, the backup gate silently stops firing — hence the guard.
+        $gone = Join-Path $script:Tmp 'vanished.txt'; 'bye' | Set-Content $gone
+        $dangling = Join-Path $script:Tmp 'dangling.txt'
+        New-Item -ItemType SymbolicLink -Path $dangling -Target $gone -Force | Out-Null
+        Remove-Item -LiteralPath $gone -Force
+
+        Test-Path -LiteralPath $dangling | Should -BeTrue
+        Test-SymlinkCurrent -Link $dangling -Target (Join-Path $script:Tmp 'target.txt') | Should -BeFalse
+        Remove-Item -LiteralPath $dangling -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Describe 'install.ps1 step counter' {
+    It 'declares a StepTotal matching the number of Write-Step calls' {
+        # Guards the "[6/5]" off-by-one: StepTotal was 5 while Write-Step was called
+        # six times, so the final section rendered as [6/5] — the last thing a user
+        # sees before the summary. AST-derived so adding a step can't silently drift.
+        $RepoRoot = Split-Path -Parent $PSScriptRoot
+        $path = Join-Path $RepoRoot 'install.ps1'
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)
+
+        $calls = $ast.FindAll({
+            param($n)
+            $n -is [System.Management.Automation.Language.CommandAst] -and
+            $n.GetCommandName() -eq 'Write-Step'
+        }, $true)
+
+        $assign = $ast.FindAll({
+            param($n)
+            $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            $n.Left.Extent.Text -eq '$script:StepTotal'
+        }, $true)
+
+        $assign.Count | Should -Be 1 -Because 'StepTotal should be declared exactly once'
+        [int]$assign[0].Right.Extent.Text | Should -Be $calls.Count
+    }
+}

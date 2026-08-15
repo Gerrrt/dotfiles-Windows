@@ -34,7 +34,21 @@ $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 # Get-DotGlyph / NO_COLOR-aware Write-DotHost). 05-lib is pure and side-effect-free
 # on load, so the bootstrap and the daily profile share ONE error/colour layout.
 $LibPath = Join-Path $RepoRoot 'powershell/core/05-lib.ps1'
-if (Test-Path $LibPath) { . $LibPath }
+if (Test-Path $LibPath) {
+    . $LibPath
+} else {
+    # No shims here, deliberately: unlike Install-Packages.ps1 (which only needs the
+    # rendering helpers and can degrade to plain output), this script depends on
+    # Get-DotfilesLinkPlan for the ENTIRE link plan. Continuing would produce a
+    # CommandNotFoundException cascade halfway through wiring the host. One clear
+    # diagnostic beats ten confusing ones.
+    Write-Error @"
+powershell/core/05-lib.ps1 not found under '$RepoRoot'.
+The checkout looks incomplete — install.ps1 cannot build the link plan without it.
+Fix with:  git -C '$RepoRoot' status   then re-clone or restore the missing file.
+"@
+    exit 1
+}
 
 # --- usage banner (pure: returns the lines, so -Help and the test agree) -------
 function Get-InstallUsage {
@@ -61,10 +75,28 @@ function Get-InstallUsage {
 if ($Help) { Get-InstallUsage | ForEach-Object { Write-Host $_ }; return }
 
 # --- can we make symlinks? ----------------------------------------------------
+# Admin can ALWAYS create symlinks. Developer Mode only helps when the shell can
+# pass SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE — pwsh 7 does, Windows
+# PowerShell 5.1 does NOT. Trusting the registry key alone on 5.1 made this return
+# $true and then every New-Item -ItemType SymbolicLink threw, AFTER Link-Item had
+# already moved the user's real config to a .bak. Report the capability honestly
+# instead and let the caller fall back to copy mode up front.
 function Test-CanSymlink {
-    $devMode = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense
-    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    return ($devMode -eq 1) -or $isAdmin
+    param(
+        [string]$Edition = $PSVersionTable.PSEdition,
+        [nullable[bool]]$IsAdminOverride,
+        [nullable[int]]$DevModeOverride
+    )
+    $isAdmin = if ($null -ne $IsAdminOverride) { [bool]$IsAdminOverride } else {
+        ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+            [Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
+    if ($isAdmin) { return $true }
+    $devMode = if ($null -ne $DevModeOverride) { [int]$DevModeOverride } else {
+        (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense
+    }
+    # Developer Mode without admin needs a host that requests the unprivileged flag.
+    return (($devMode -eq 1) -and ($Edition -eq 'Core'))
 }
 
 # --- Test-SymlinkCurrent ------------------------------------------------------
@@ -143,7 +175,9 @@ function Test-CopyCurrent {
 $script:LinkStats = [ordered]@{ linked = 0; copied = 0; skipped = 0; backedup = 0 }
 
 # Numbered, consistent section header (visual hierarchy + progress: [n/total]).
-$script:StepTotal = 5
+# Keep in step with the Write-Step call count below (env, packages, configs,
+# .wslconfig, local overrides, mise) — tests/Install.Tests.ps1 asserts they agree.
+$script:StepTotal = 6
 $script:StepNo    = 0
 function Write-Step {
     param([string]$Title)
@@ -239,35 +273,73 @@ function Link-Item {
     # skipping the back-up branch and clobbering the user's own config with no .bak.
     if ($script:DryRun) {
         if (Test-Path -LiteralPath $Link) { Write-DotHost "  would back up + $verb  $Link" -Color DarkYellow }
-        else                              { Write-DotHost "  would $verb  $Link" -Color Cyan }
+        else                       { Write-DotHost "  would $verb  $Link" -Color Cyan }
         return
     }
 
     $parent = Split-Path -Parent $Link
     if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
 
+    # Track the backup so a failed link/copy can put the user's file back exactly
+    # where it was. Without this, a throw below leaves them with no config at $Link
+    # and a timestamped .bak they have to find and rename by hand.
+    $backup = $null
     if (Test-Path -LiteralPath $Link) {
         if (-not (Confirm-Overwrite $Link)) {
             Write-Host "  skip    $Link (kept existing, by request)" -ForegroundColor DarkGray
             $script:LinkStats.skipped++
             return
         }
-        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-        Move-Item -LiteralPath $Link -Destination "$Link.$stamp.bak" -Force
-        Write-DotHost "  backed up existing -> $Link.$stamp.bak" -Color DarkYellow
+        $stamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $backup = "$Link.$stamp.bak"
+        Move-Item -LiteralPath $Link -Destination $backup -Force
+        Write-DotHost "  backed up existing -> $backup" -Color DarkYellow
         $script:LinkStats.backedup++
     }
-    if ($CanSymlink) {
-        New-Item -ItemType SymbolicLink -Path $Link -Target $Target -Force | Out-Null
-        Write-DotHost "  linked  $Link" -Color Green
-        $script:LinkStats.linked++
-    } else {
-        # -Recurse so directory targets (nvim\, psmux\scripts) copy in full — a
-        # plain Copy-Item only takes the top-level entry and leaves them empty.
-        $recurse = (Test-Path -LiteralPath $Target -PathType Container)
-        Copy-Item -LiteralPath $Target -Destination $Link -Force -Recurse:$recurse
-        Write-DotHost "  copied  $Link" -Color Green
-        $script:LinkStats.copied++
+
+    try {
+        if ($CanSymlink) {
+            New-Item -ItemType SymbolicLink -Path $Link -Target $Target -Force -ErrorAction Stop | Out-Null
+            Write-DotHost "  linked  $Link" -Color Green
+            $script:LinkStats.linked++
+        } else {
+            # -Recurse so directory targets (nvim\, psmux\scripts) copy in full — a
+            # plain Copy-Item only takes the top-level entry and leaves them empty.
+            $recurse = (Test-Path -LiteralPath $Target -PathType Container)
+            Copy-Item -LiteralPath $Target -Destination $Link -Force -Recurse:$recurse -ErrorAction Stop
+            Write-DotHost "  copied  $Link" -Color Green
+            $script:LinkStats.copied++
+        }
+    } catch {
+        # Restore first, report second: never leave the host worse than we found it.
+        if ($backup -and (Test-Path -LiteralPath $backup)) {
+            # A partial copy may already occupy $Link; clear it so the restore lands.
+            if (Test-Path -LiteralPath $Link) { Remove-Item -LiteralPath $Link -Recurse -Force -ErrorAction SilentlyContinue }
+            Move-Item -LiteralPath $backup -Destination $Link -Force -ErrorAction SilentlyContinue
+            if (Test-Path -LiteralPath $Link) {
+                Write-DotHost "  restored $Link from backup" -Color DarkYellow
+                $script:LinkStats.backedup--
+            }
+        }
+        # A symlink failure is recoverable — copy instead — so one unlinkable row
+        # doesn't abort a whole bootstrap. $ErrorActionPreference is 'Stop' here, so
+        # without this the run would die mid-plan with the remaining links unwired.
+        if ($CanSymlink) {
+            Write-DotWarn "Could not symlink $Link — falling back to copy." "$_"
+            try {
+                $recurse = (Test-Path -LiteralPath $Target -PathType Container)
+                if (Test-Path -LiteralPath $Link) { Remove-Item -LiteralPath $Link -Recurse -Force -ErrorAction SilentlyContinue }
+                Copy-Item -LiteralPath $Target -Destination $Link -Force -Recurse:$recurse -ErrorAction Stop
+                Write-DotHost "  copied  $Link" -Color Green
+                $script:LinkStats.copied++
+            } catch {
+                Write-DotErr "Could not wire $Link at all: $_" 'Your original file (if any) has been restored.'
+                $script:LinkStats.skipped++
+            }
+        } else {
+            Write-DotErr "Could not copy $Link : $_" 'Your original file (if any) has been restored.'
+            $script:LinkStats.skipped++
+        }
     }
 }
 
@@ -324,9 +396,16 @@ if ($PSVersionTable.PSEdition -ne 'Core') {
 if ($script:DryRun) {
     Write-DotHost '  would unblock repo files + ensure RemoteSigned execution policy' -Color Cyan
 } else {
-    Get-ChildItem -Path $RepoRoot -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -notlike '*\.git\*' } |
-        Unblock-File -ErrorAction SilentlyContinue
+    # A `git clone` never sets Mark-of-the-Web, so the whole-tree walk is pure
+    # overhead on the bootstrap path — which is how most people get here. Only pay
+    # for it when the repo could have arrived as a downloaded archive.
+    if (Test-Path (Join-Path $RepoRoot '.git')) {
+        Write-Host '  unblock: skipped (git clone — no Mark-of-the-Web to clear)' -ForegroundColor DarkGray
+    } else {
+        Get-ChildItem -Path $RepoRoot -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notlike '*\.git\*' } |
+            Unblock-File -ErrorAction SilentlyContinue
+    }
 
     # Ensure scripts can run for this user. RemoteSigned is the minimum the profile
     # needs to load each session. Leave it alone if Group Policy already pins one.
@@ -343,7 +422,10 @@ if ($script:DryRun) {
 
 $CanSymlink = Test-CanSymlink
 if (-not $CanSymlink) {
-    Write-DotWarn 'Neither Developer Mode nor admin detected — falling back to COPY (changes will not auto-track the repo).' 'For true symlinks: enable Developer Mode, or re-run from an elevated PowerShell.'
+    # NOT "re-run elevated": scoop's installer refuses to run as administrator, so
+    # elevating to win symlinks costs you the entire package phase. Developer Mode
+    # is the only path that gets both. configuration.dsc.yaml turns it on for you.
+    Write-DotWarn 'Neither Developer Mode nor admin detected — falling back to COPY (changes will not auto-track the repo).' 'For true symlinks enable Developer Mode: winget configure -f configuration.dsc.yaml --accept-configuration-agreements  (Settings > System > For developers also works). Avoid elevating instead — scoop will not install from an admin shell.'
 }
 
 # Wire the repo-local pre-commit gate when this is a git clone (so contributors
@@ -476,16 +558,26 @@ if (Test-Path -LiteralPath $wslCfg) {
 } elseif ($script:DryRun) {
     Write-DotHost "  would seed $wslCfg from wsl\windows.wslconfig.example" -Color Cyan
 } else {
-    Copy-Item -LiteralPath (Join-Path $RepoRoot 'wsl/windows.wslconfig.example') -Destination $wslCfg
-    Write-DotHost "  seeded  $wslCfg  (review it, then run: wsl --shutdown)" -Color Green
+    # Guard the SOURCE: $ErrorActionPreference is 'Stop', so a renamed/missing
+    # example would abort the whole install here rather than skipping a seed step
+    # that is optional by design.
+    $wslExample = Join-Path $RepoRoot 'wsl/windows.wslconfig.example'
+    if (Test-Path -LiteralPath $wslExample) {
+        Copy-Item -LiteralPath $wslExample -Destination $wslCfg
+        Write-DotHost "  seeded  $wslCfg  (review it, then run: wsl --shutdown)" -Color Green
+    } else {
+        Write-DotWarn "wsl\windows.wslconfig.example is missing — skipped seeding $wslCfg."
+    }
 }
 
 # --- 5. seed local override + gitconfig.local ---------------------------------
 Write-Step 'Seeding local overrides'
 $localPs = Join-Path $RepoRoot 'powershell/local.ps1'
 if (-not (Test-Path -LiteralPath $localPs)) {
+    $localExample = Join-Path $RepoRoot 'powershell/local.ps1.example'
     if ($script:DryRun) { Write-DotHost "  would seed $localPs from local.ps1.example" -Color Cyan }
-    else { Copy-Item -LiteralPath (Join-Path $RepoRoot 'powershell/local.ps1.example') -Destination $localPs }
+    elseif (Test-Path -LiteralPath $localExample) { Copy-Item -LiteralPath $localExample -Destination $localPs }
+    else { Write-DotWarn "powershell\local.ps1.example is missing — skipped seeding $localPs." }
 }
 
 # Zero-config onboarding (U9): instead of seeding a placeholder the user must
