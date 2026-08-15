@@ -94,6 +94,79 @@ rather than the always-on CLI core:
 `tailscale`/`syncthing` install as plain scoop binaries (no service auto-starts),
 and `ShareX` opts out with the rest of the `gui` group via `DOTFILES_PKG_GROUPS`.
 
+## Version control — jj (jujutsu, opt-in)
+
+[jj](https://github.com/jj-vcs/jj) is a git-compatible VCS that works on a
+**colocated** repo: it reads and writes the same `.git` directory, so it never
+replaces git and you can stop using it at any time. Installed from scoop `main`;
+config at `jj/config.toml`, symlinked to `%APPDATA%\jj\config.toml`.
+
+| Verb  | Runs        |
+| ----- | ----------- |
+| `jjs` | `jj status` |
+| `jjl` | `jj log`    |
+| `jjd` | `jj diff`   |
+
+All three are guarded on `Test-Cmd jj`, so they simply don't exist on a box
+without it — the same opt-in shape as the rest of `00-aliases.ps1`.
+
+**Identity is not committed.** `jj/config.toml` ships with `[user]` name/email
+deliberately commented out, because the file is tracked and jj does not inherit
+git's identity. Set it per-machine:
+
+```powershell
+jj config set --user user.name  "Your Name"
+jj config set --user user.email "you@example.com"
+```
+
+One deliberate divergence from Core's `jujutsu/config.toml`: `pager = ":builtin"`
+rather than `less -FRX`, since `less` is absent on a stock Windows box. Bare `jj`
+runs `log` (`default-command`), and `auto-local-bookmark` imports git branches as
+jj bookmarks so a colocated repo stays legible from both sides.
+
+## Encryption & transfer — age + croc
+
+`powershell/core/45-crypto.ps1` wraps two small tools into shell verbs. Both are
+scoop-installed (`age` from extras, `croc` from main) and, like everything else
+here, the verbs are guarded so they vanish on a host without the binary.
+
+| Verb          | Does                                                     |
+| ------------- | -------------------------------------------------------- |
+| `age-setup`   | Generate a keypair for this host                          |
+| `age-pubkey`  | Print the public key (what senders encrypt to)            |
+| `age-enc`     | Encrypt to a recipient's public key                       |
+| `age-dec`     | Decrypt with this host's key                              |
+| `age-enc-pw`  | Encrypt with a passphrase instead of a key                |
+| `send`        | Send a file to another machine (croc, relay-brokered)     |
+| `recv`        | Receive a croc transfer                                   |
+
+`age` is the file-at-rest half (small, modern, no PKI ceremony); `croc` is the
+move-it-between-machines half and works without either end being reachable.
+
+## Also installed (catalog)
+
+Tools in `scoopfile.json` that don't warrant a section of their own but should be
+discoverable rather than a surprise in the manifest:
+
+| Tool                        | Adds                                                              |
+| --------------------------- | ------------------------------------------------------------------ |
+| `gh`                        | GitHub CLI — PRs, issues, releases, and the `gh api` escape hatch  |
+| `navi`                      | Interactive cheatsheet launcher                                     |
+| `carapace-bin`              | The multi-shell completion engine behind the completions layer      |
+| `scoop-search`              | Fast `scoop search` replacement (the built-in is slow)              |
+| `dust` / `duf`              | Disk usage by directory / by filesystem                             |
+| `procs`                     | `ps` replacement with a readable default view                       |
+| `hexyl`                     | Hex viewer with colour-coded byte classes                           |
+| `tokei`                     | Lines-of-code counts by language                                    |
+| `difftastic`                | Structural (AST-aware) diff; complements `delta`'s line diff        |
+| `fastfetch`                 | System summary banner; declared but not wired into the profile      |
+| `gping` / `viddy`           | Ping with a graph / `watch` with diffing (interval re-run)          |
+| `ouch` / `7zip`             | Archive extract-anything / the general-purpose archiver             |
+| `everything` + `-cli`       | Instant filename search (index-backed), plus its CLI front end      |
+| `openssh`                   | Client used by `ssh/config` (Windows OpenSSH — no ControlMaster)    |
+| `luacheck` / `tree-sitter`  | Lua lint (matches the CI job) / grammar tooling for nvim            |
+| `php` `composer` `julia` `openjdk25` | Language runtimes kept scoop-owned — see PACKAGE-OWNERSHIP.md |
+
 ## Terminal multiplexer — psmux (native host)
 
 The fleet runs tmux inside WSL, but the **host** now gets a real multiplexer too.
