@@ -7,17 +7,17 @@
             "command":
             {
                 "action": "scrollToMark",
-                "direction": "previous"
+                "direction": "next"
             },
-            "id": "User.scrollToMark.D3F0B923"
+            "id": "User.scrollToMark.2A0DA8E0"
         },
         {
             "command":
             {
                 "action": "scrollToMark",
-                "direction": "next"
+                "direction": "previous"
             },
-            "id": "User.scrollToMark.2A0DA8E0"
+            "id": "User.scrollToMark.D3F0B923"
         }
     ],
     "alwaysShowTabs": true,
@@ -29,32 +29,32 @@
     "keybindings":
     [
         {
-            "id": "Terminal.SplitPaneRight",
-            "keys": "alt+shift+plus"
-        },
-        {
             "id": "Terminal.MoveFocusDown",
             "keys": "alt+down"
+        },
+        {
+            "id": "Terminal.SplitPaneRight",
+            "keys": "alt+shift+plus"
         },
         {
             "id": "Terminal.SplitPaneDown",
             "keys": "alt+shift+minus"
         },
         {
-            "id": "Terminal.ClosePane",
-            "keys": "ctrl+shift+w"
-        },
-        {
-            "id": "Terminal.MoveFocusRight",
-            "keys": "alt+right"
+            "id": "Terminal.FindText",
+            "keys": "ctrl+shift+f"
         },
         {
             "id": "Terminal.MoveFocusUp",
             "keys": "alt+up"
         },
         {
-            "id": "Terminal.FindText",
-            "keys": "ctrl+shift+f"
+            "id": "Terminal.MoveFocusRight",
+            "keys": "alt+right"
+        },
+        {
+            "id": "Terminal.ClosePane",
+            "keys": "ctrl+shift+w"
         },
         {
             "id": "Terminal.MoveFocusLeft",
@@ -174,6 +174,12 @@
                 "hidden": false,
                 "name": "openSUSE-Tumbleweed",
                 "source": "Windows.Terminal.Wsl"
+            },
+            {
+                "guid": "{03cedd78-021e-5bab-8291-14bf245e7287}",
+                "hidden": false,
+                "name": "archlinux",
+                "source": "Microsoft.WSL"
             }
         ]
     },
