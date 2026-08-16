@@ -39,4 +39,4 @@ jobs:
     # silently change what runs here — the same supply-chain discipline ci.yml applies
     # to its third-party actions. Bump the SHA (and the # v-comment) when intentionally
     # adopting a new auto-tag-call release.
-    uses: dotgibson/dotfiles-core/.github/workflows/auto-tag-call.yml@bea73f6080b04704ffd206bd935073e38781aec9 # v4.5.0
+    uses: dotgibson/dotfiles-core/.github/workflows/auto-tag-call.yml@a3e75b561baa4b395d9e7055c6745074c2381e76 # v4.12.0
