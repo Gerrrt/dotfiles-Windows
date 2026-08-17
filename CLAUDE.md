@@ -5,7 +5,7 @@ live in [dotfiles-core](https://github.com/dotgibson/dotfiles-core).
 
 ## What this repo is
 
-`dotfiles-Windows` is the **native-host layer** of a **ten-repo dotfiles system**
+`dotfiles-Windows` is the **native-host layer** of an **eleven-repo dotfiles system**
 built on a three-layer model (Core → OS-native → Role). It owns the Windows host:
 PowerShell as the daily-driver shell, Windows Terminal, the scoop/winget package
 layer, `psmux` (native tmux), and the bridge to Linux distros under WSL2.
