@@ -71,7 +71,7 @@ fragments mirror the feel of the zsh loader — so only two cross-shell assets a
 synced from [`dotfiles-core`](https://github.com/dotgibson/dotfiles-core):
 `nvim/` (via `nvim-sync.ps1`) and `starship/starship.toml` (via
 `starship-sync.ps1`). It also deliberately does **not** configure WSL distros —
-Core and Kali configure themselves from their own repos _inside_ WSL. This repo
+Core, `dotfiles-Debian` and `dotfiles-Offense` configure themselves from their own repos _inside_ WSL. This repo
 makes the host excellent, then gets out of the way. Full docs live on the
 [documentation site][docs].
 
@@ -82,7 +82,7 @@ than vendoring it:
 | --- | --- | --- |
 | **Core** | [`dotfiles-core`](https://github.com/dotgibson/dotfiles-core) → vendored into every OS repo's `core/` (Windows replicates it in pwsh instead) | zsh, tmux, nvim, git, starship — identical everywhere |
 | **OS-native** | `dotfiles-{MacBook,Windows,Fedora,Arch,openSUSE,Alpine,Gentoo}` (Windows is the native host) | package manager, clipboard, paths |
-| **Role** | `dotfiles-Kali`, `dotfiles-Defense` | offensive / defensive tooling (Windows bridges to Kali under WSL) |
+| **Role** | `dotfiles-Offense`, `dotfiles-Defense` | offensive / defensive tooling (Windows bridges to Kali under WSL) |
 
 ### Languages
 

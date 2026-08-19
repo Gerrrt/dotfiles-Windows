@@ -24,7 +24,7 @@ name: claude-routines
 on:
   schedule:
     # Monthly nudge (1st, 08:00 UTC) — release-readiness only. Deliberately off the rest
-    # of the fleet's crons (core Tue, Defense Wed, htpx Thu, Kali Fri). Low cadence: this
+    # of the fleet's crons (core Tue, Defense Wed, htpx Thu, Offense Fri). Low cadence: this
     # host repo releases rarely, but its auto-patch tags drift ahead of the CHANGELOG, so
     # a monthly "is a real release due?" check keeps that from going unnoticed.
     - cron: "0 8 1 * *"

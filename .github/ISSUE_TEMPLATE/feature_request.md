@@ -10,7 +10,7 @@ labels: enhancement
 
 <!-- This repo owns the host: shell, terminal, packages, the WSL bridge. It
      deliberately does NOT configure WSL distros — those configure themselves
-     from their own repos inside WSL. Offensive tooling lives on the Kali repo. -->
+     from their own repos inside WSL. Offensive tooling lives in dotfiles-Offense. -->
 
 ## Fleet parity
 
