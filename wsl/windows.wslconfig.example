@@ -1,7 +1,7 @@
 # windows.wslconfig.example
 # -> copy to  %USERPROFILE%\.wslconfig  (then `wsl --shutdown` to apply)
 #
-# This is the CANONICAL home for the host-side WSL2 config that your Kali repo
+# This is the CANONICAL home for the host-side WSL2 config that your Linux repos
 # references. Mirrored networking is the key setting: it makes the host and the
 # WSL distro share the host's network interfaces, so a service bound inside WSL
 # is reachable at the host's LAN IP. Without it, WSL2 sits behind a NAT and

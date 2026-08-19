@@ -207,7 +207,7 @@ render-verified" items below are **U18** and **U19**.
 ## Windows-only additions
 
 - `wsl/windows.wslconfig.example` — canonical home for the host WSL2 config
-  (mirrored networking) that the Kali repo references.
+  (mirrored networking) that dotfiles-Debian references.
 - `powershell/os/31-wsl-bridge.ps1` — the host↔WSL seam (`kali`, `cdwsl`,
   `hostip`, `wsl-restart`).
 - `powershell/os/32-psmux.ps1` + `psmux/psmux.conf` — native host multiplexer.

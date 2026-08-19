@@ -12,7 +12,8 @@ layer, `psmux` (native tmux), and the bridge to Linux distros under WSL2.
 
 ## The rule that bites
 
-It deliberately does **not** configure WSL distros — Core and Kali
+It deliberately does **not** configure WSL distros — Core, `dotfiles-Debian`
+(the OS layer, which covers Kali) and `dotfiles-Offense` (the role layer)
 configure themselves from their own repos *inside* WSL. This repo's job is to make
 the host excellent and then get out of the way.
 
