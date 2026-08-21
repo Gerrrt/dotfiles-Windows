@@ -118,12 +118,6 @@
                 "name": "Windows PowerShell"
             },
             {
-                "guid": "{8f13d75b-c233-5152-a906-3dac402da8a3}",
-                "hidden": false,
-                "name": "dotfiles-Kali",
-                "source": "Microsoft.WSL"
-            },
-            {
                 "commandline": "pwsh.exe -NoLogo",
                 "font":
                 {
@@ -162,12 +156,6 @@
                 "hidden": false,
                 "name": "Alpine",
                 "source": "Windows.Terminal.Wsl"
-            },
-            {
-                "guid": "{ffedbb90-d7e6-5875-8129-097b0e3d8f87}",
-                "hidden": false,
-                "name": "kali-linux",
-                "source": "Microsoft.WSL"
             },
             {
                 "guid": "{bc2da056-dd06-5879-b969-1dfcefc8d2c7}",
