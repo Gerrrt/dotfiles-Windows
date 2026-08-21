@@ -170,12 +170,6 @@
                 "source": "Microsoft.WSL"
             },
             {
-                "guid": "{a675d977-f025-5e38-b380-d9d8b20540e4}",
-                "hidden": false,
-                "name": "Ubuntu",
-                "source": "Microsoft.WSL"
-            },
-            {
                 "guid": "{fff4f036-2c6a-5132-9580-f05b22260be7}",
                 "hidden": false,
                 "name": "Gentoo",
