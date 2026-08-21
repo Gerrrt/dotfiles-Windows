@@ -192,6 +192,18 @@
                 "hidden": false,
                 "name": "Gentoo",
                 "source": "Microsoft.WSL"
+            },
+            {
+                "guid": "{f9cf7c75-d76e-525f-b40f-136f68c69a36}",
+                "hidden": false,
+                "name": "Debian",
+                "source": "Microsoft.WSL"
+            },
+            {
+                "guid": "{bae84d84-d8a8-59a4-bbed-d6da05a78622}",
+                "hidden": false,
+                "name": "kali-linux",
+                "source": "Microsoft.WSL"
             }
         ]
     },
