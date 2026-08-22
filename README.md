@@ -81,7 +81,7 @@ than vendoring it:
 | Layer | Lives in | Owns |
 | --- | --- | --- |
 | **Core** | [`dotfiles-core`](https://github.com/dotgibson/dotfiles-core) → vendored into every OS repo's `core/` (Windows replicates it in pwsh instead) | zsh, tmux, nvim, git, starship — identical everywhere |
-| **OS-native** | `dotfiles-{MacBook,Windows,Fedora,Arch,openSUSE,Alpine,Gentoo}` (Windows is the native host) | package manager, clipboard, paths |
+| **OS-native** | `dotfiles-{MacBook,Windows,Fedora,Arch,Debian,openSUSE,Alpine,Gentoo}` (Windows is the native host) | package manager, clipboard, paths |
 | **Role** | `dotfiles-Offense`, `dotfiles-Defense` | offensive / defensive tooling (Windows bridges to Kali under WSL) |
 
 ### Languages
@@ -236,29 +236,29 @@ Project Link: [dotgibson](https://github.com/dotgibson/)
 <!-- Markdown Links & Images -->
 [repo-docs]: https://dotgibson.github.io/dotfiles-web/docs/repos/dotfiles-Windows
 [audit]: https://dotgibson.github.io/dotfiles-web/docs/reference/windows-architecture-audit
-[dotgibson-shield]: https://img.shields.io/github/v/release/dotgibson/dotfiles-core?style=flat-square&label=dotgibson&labelColor=181717&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAF1klEQVR4nLSWbUxT7RnHr9PT09MXSltaoC9QXkqR16Iwhb0Iw8VYYE7jPri5aBaZzpmFZbpolpn4QeMyM%2BM%2B7MVt0Q9LNJIlxCzqxGWS6aKAig51vBQKIi3QltpCS0%2Fbc879pD1N3%2Bnz4fG5Pl2977v%2F331d131f5%2BZrddWQZAgAgy9uCRlefICzT6GeIsP%2FXF15kahmu9JglGmLRQoRQdIQWgu77BuWGe%2Fo%2BOqym8odApaWomTT1%2Bl2HqirahaTuJ9kQMggkgYhDRGfRiQDZBi9fuf52%2BD7l1b3ZhRcmq%2FMnBHmibuO7fvWoTalVoDjQRwL8RGgEOtzB0MbtBDnkRjGR0AgTK%2BQfNukr1LKXlhXKZpJSxTKGoFSq9vf16tQ8%2FiEh094Vu0L449mLGMup20DRWuFYVCiFm%2BvU36nTbOlMB%2BnCDxIOBzhvv6nFpc3TS0dUKDRHzh1Jk9O8wlPYN326Oa%2FJobnN8shAOxqKjrdXa8WSnGKWPewR%2FuHLG5P8oKUFJHi%2FH19F6UKEQ%2BnbJap27%2B%2BtWR15VAHgLkV%2F%2F0xW6OuQCfNE4PgmyX6f0xZKYbJDuj43lmtoYqHU%2FaZdwNXr4eoUG51zqgw%2B%2FCtrbm0UCeRynBhqVj2YC4RNC%2FuqStbKkydAODzeO7%2B6QYTpnOIYgB729R729RY9DAGafb0wDOHLwAA5vKK1mJNFoCpsxeLLn%2Fy91uU359719%2FfVXL%2BSM35IzU9rcXciCcQujz0imOfbGhOB0jkGo2hFQBW7Quzr0Zzq6vyBT%2FuKY%2BHErfBmQWLK1Lhr6l1OkleCqC0poPb%2FuTwv3OrA8DPDhgkokgLmLX77o86kqcGJmaj5xjr1JWlAAr1Js75MDEGAAI%2B1mvWX%2F1JY29XmYDPS5ZoNsrM24si1xSh3%2FRbGBYlz%2F73g41ztqliqYv1onyVHgDocMjjXASAKycavlqnZBHa2ajcasjv%2B8MbAPhRV9nI5MezB41crIPPHWOW9Gtl9XhDDCMCokIqSwGQ4shvyucFhEQCnqlSdm9k%2BdKt6XM%2FqO7aof7t8YbIIW5SHdpVIhUTAOAP0L8bmM3MHgJwByidQCgnhSmAqOEYnQ8AgRBr%2FuUzKsgggIs3pyVCfkeTCgAmFtaNOgm39C%2F3511r2W8JYvIAJbIaAwQ3vKAEoVgRaTQIBYKxqxgMs6euvdUXiQDgeHd5rV7K1fb2kC2rOgaYghQBMJ5grI3HUGuuhQiNIOWq8sy%2FLTgCKplgT0ZtCyprWw7%2FvKCyNr6yQqYg8cim59a9KQDnwv84R1%2F99UwAzsMya4vxeOYLN7YePGG%2BcAPjxXS%2BoavknFfOlRTAh8nHKNqLa1v2ZwK6dxQZtHk5ahu3%2FcYmLsoh%2B%2FsUgN%2BztDQzEvkYFBurGnan%2FS1%2B1P98L1FbxLIPzh193X%2FtwbmjiGUBYHd5nVFRCABPlxdtfh%2B3LHGKxof%2Bqo90C6yj58yi9Tm1kWjr94ZXsGhTuDuynAx2z0245yY4X06Kf9HWFd0N%2BuPbsUR64%2B3a57Erig2qIoOIlJSUNE69GWTZRFufXvRNL%2Fo2ywyJE1fMP6xWqHBEP5yfvP7%2FbAAAsFufG01mkVCqkGvLyrbNTD2mw9kfDckmE0oudx9rUZfhiF5Zd%2F%2F00QDF0NkBTJhanB3e0riHJIRKhXarqWfdu%2Bx0WnOot1ftuNR90lhQzEO0L7B2YvCm3b%2BWNI%2ByffSLq757%2BPcquYaIvBtgdcXycuzO9MzTFdccd9IwDNMVlDaXbzPXtxsVhQRDEQzl8i6d%2Buf12Y%2BONDVMo6vOfHWJxHLz3l811u8WAEZABCNAAHSI8n8k2HABKRJjLJ8JECxFMAE%2BHXhiGb7yn35vcCNDKVsEcSuv%2BEpn%2B7Etla0CwAQIOBLBhrkt85kAnwm8mX95e%2FTOa9vUZiIxQI43r0Kura9uN5SYNMoyuVDGZ2nK73C65iy28Rezo44152bSKYAvz3ifVA1lDn0WAAD%2F%2F%2FWvXexgMwqgAAAAAElFTkSuQmCC
+[dotgibson-shield]: https://img.shields.io/github/v/release/dotgibson/dotfiles-core?style=plastic&label=dotgibson&labelColor=181717&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAF1klEQVR4nLSWbUxT7RnHr9PT09MXSltaoC9QXkqR16Iwhb0Iw8VYYE7jPri5aBaZzpmFZbpolpn4QeMyM%2BM%2B7MVt0Q9LNJIlxCzqxGWS6aKAig51vBQKIi3QltpCS0%2Fbc879pD1N3%2Bnz4fG5Pl2977v%2F331d131f5%2BZrddWQZAgAgy9uCRlefICzT6GeIsP%2FXF15kahmu9JglGmLRQoRQdIQWgu77BuWGe%2Fo%2BOqym8odApaWomTT1%2Bl2HqirahaTuJ9kQMggkgYhDRGfRiQDZBi9fuf52%2BD7l1b3ZhRcmq%2FMnBHmibuO7fvWoTalVoDjQRwL8RGgEOtzB0MbtBDnkRjGR0AgTK%2BQfNukr1LKXlhXKZpJSxTKGoFSq9vf16tQ8%2FiEh094Vu0L449mLGMup20DRWuFYVCiFm%2BvU36nTbOlMB%2BnCDxIOBzhvv6nFpc3TS0dUKDRHzh1Jk9O8wlPYN326Oa%2FJobnN8shAOxqKjrdXa8WSnGKWPewR%2FuHLG5P8oKUFJHi%2FH19F6UKEQ%2BnbJap27%2B%2BtWR15VAHgLkV%2F%2F0xW6OuQCfNE4PgmyX6f0xZKYbJDuj43lmtoYqHU%2FaZdwNXr4eoUG51zqgw%2B%2FCtrbm0UCeRynBhqVj2YC4RNC%2FuqStbKkydAODzeO7%2B6QYTpnOIYgB729R729RY9DAGafb0wDOHLwAA5vKK1mJNFoCpsxeLLn%2Fy91uU359719%2FfVXL%2BSM35IzU9rcXciCcQujz0imOfbGhOB0jkGo2hFQBW7Quzr0Zzq6vyBT%2FuKY%2BHErfBmQWLK1Lhr6l1OkleCqC0poPb%2FuTwv3OrA8DPDhgkokgLmLX77o86kqcGJmaj5xjr1JWlAAr1Js75MDEGAAI%2B1mvWX%2F1JY29XmYDPS5ZoNsrM24si1xSh3%2FRbGBYlz%2F73g41ztqliqYv1onyVHgDocMjjXASAKycavlqnZBHa2ajcasjv%2B8MbAPhRV9nI5MezB41crIPPHWOW9Gtl9XhDDCMCokIqSwGQ4shvyucFhEQCnqlSdm9k%2BdKt6XM%2FqO7aof7t8YbIIW5SHdpVIhUTAOAP0L8bmM3MHgJwByidQCgnhSmAqOEYnQ8AgRBr%2FuUzKsgggIs3pyVCfkeTCgAmFtaNOgm39C%2F3511r2W8JYvIAJbIaAwQ3vKAEoVgRaTQIBYKxqxgMs6euvdUXiQDgeHd5rV7K1fb2kC2rOgaYghQBMJ5grI3HUGuuhQiNIOWq8sy%2FLTgCKplgT0ZtCyprWw7%2FvKCyNr6yQqYg8cim59a9KQDnwv84R1%2F99UwAzsMya4vxeOYLN7YePGG%2BcAPjxXS%2BoavknFfOlRTAh8nHKNqLa1v2ZwK6dxQZtHk5ahu3%2FcYmLsoh%2B%2FsUgN%2BztDQzEvkYFBurGnan%2FS1%2B1P98L1FbxLIPzh193X%2FtwbmjiGUBYHd5nVFRCABPlxdtfh%2B3LHGKxof%2Bqo90C6yj58yi9Tm1kWjr94ZXsGhTuDuynAx2z0245yY4X06Kf9HWFd0N%2BuPbsUR64%2B3a57Erig2qIoOIlJSUNE69GWTZRFufXvRNL%2Fo2ywyJE1fMP6xWqHBEP5yfvP7%2FbAAAsFufG01mkVCqkGvLyrbNTD2mw9kfDckmE0oudx9rUZfhiF5Zd%2F%2F00QDF0NkBTJhanB3e0riHJIRKhXarqWfdu%2Bx0WnOot1ftuNR90lhQzEO0L7B2YvCm3b%2BWNI%2ByffSLq757%2BPcquYaIvBtgdcXycuzO9MzTFdccd9IwDNMVlDaXbzPXtxsVhQRDEQzl8i6d%2Buf12Y%2BONDVMo6vOfHWJxHLz3l811u8WAEZABCNAAHSI8n8k2HABKRJjLJ8JECxFMAE%2BHXhiGb7yn35vcCNDKVsEcSuv%2BEpn%2B7Etla0CwAQIOBLBhrkt85kAnwm8mX95e%2FTOa9vUZiIxQI43r0Kura9uN5SYNMoyuVDGZ2nK73C65iy28Rezo44152bSKYAvz3ifVA1lDn0WAAD%2F%2F%2FWvXexgMwqgAAAAAElFTkSuQmCC
 [dotgibson-url]: https://github.com/dotgibson/dotfiles-core/releases/latest
-[ci-shield]: https://img.shields.io/github/actions/workflow/status/dotgibson/dotfiles-Windows/ci.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=CI
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/dotgibson/dotfiles-Windows/ci.yml?branch=main&style=plastic&logo=githubactions&logoColor=white&label=CI
 [ci-url]: https://github.com/dotgibson/dotfiles-Windows/actions/workflows/ci.yml
-[lastcommit-shield]: https://img.shields.io/github/last-commit/dotgibson/dotfiles-Windows?branch=main&style=flat-square&logo=git&logoColor=white
-[contributors-shield]: https://img.shields.io/github/contributors/dotgibson/dotfiles-Windows.svg?style=flat-square&logo=github
+[lastcommit-shield]: https://img.shields.io/github/last-commit/dotgibson/dotfiles-Windows?branch=main&style=plastic&logo=git&logoColor=white
+[contributors-shield]: https://img.shields.io/github/contributors/dotgibson/dotfiles-Windows.svg?style=plastic&logo=github
 [contributors-url]: https://github.com/dotgibson/dotfiles-Windows/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/dotgibson/dotfiles-Windows.svg?style=flat-square&logo=github
+[forks-shield]: https://img.shields.io/github/forks/dotgibson/dotfiles-Windows.svg?style=plastic&logo=github
 [forks-url]: https://github.com/dotgibson/dotfiles-Windows/network/members
-[stars-shield]: https://img.shields.io/github/stars/dotgibson/dotfiles-Windows.svg?style=flat-square&logo=github
+[stars-shield]: https://img.shields.io/github/stars/dotgibson/dotfiles-Windows.svg?style=plastic&logo=github
 [stars-url]: https://github.com/dotgibson/dotfiles-Windows/stargazers
-[issues-shield]: https://img.shields.io/github/issues/dotgibson/dotfiles-Windows?style=flat-square&logo=github
+[issues-shield]: https://img.shields.io/github/issues/dotgibson/dotfiles-Windows?style=plastic&logo=github
 [issues-url]: https://github.com/dotgibson/dotfiles-Windows/issues
-[license-shield]: https://img.shields.io/github/license/dotgibson/dotfiles-Windows.svg?style=flat-square
+[license-shield]: https://img.shields.io/github/license/dotgibson/dotfiles-Windows.svg?style=plastic
 [license-url]: https://github.com/dotgibson/dotfiles-Windows/blob/main/LICENSE
 [docs]: https://dotgibson.github.io/dotfiles-web/docs
-[powershell-shield]: https://img.shields.io/github/v/release/PowerShell/PowerShell?style=flat-square&logo=powershell&logoColor=white&label=PowerShell&labelColor=5391FE&color=3D59A1
+[powershell-shield]: https://img.shields.io/github/v/release/PowerShell/PowerShell?style=plastic&logo=powershell&logoColor=white&label=PowerShell&labelColor=5391FE&color=3D59A1
 [powershell-url]: https://github.com/PowerShell/PowerShell
-[wt-shield]: https://img.shields.io/github/v/release/microsoft/terminal?style=flat-square&logo=windowsterminal&logoColor=white&label=Windows%20Terminal&labelColor=4D4D4D&color=3D59A1
+[wt-shield]: https://img.shields.io/github/v/release/microsoft/terminal?style=plastic&logo=windowsterminal&logoColor=white&label=Windows%20Terminal&labelColor=4D4D4D&color=3D59A1
 [wt-url]: https://github.com/microsoft/terminal
-[scoop-shield]: https://img.shields.io/badge/Scoop-555555?style=flat-square
+[scoop-shield]: https://img.shields.io/badge/Scoop-555555?style=plastic
 [scoop-url]: https://scoop.sh
-[winget-shield]: https://img.shields.io/github/v/release/microsoft/winget-cli?style=flat-square&logo=gnometerminal&logoColor=24283B&label=WinGet&labelColor=BB9AF7&color=3D59A1
+[winget-shield]: https://img.shields.io/github/v/release/microsoft/winget-cli?style=plastic&logo=gnometerminal&logoColor=24283B&label=WinGet&labelColor=BB9AF7&color=3D59A1
 [winget-url]: https://github.com/microsoft/winget-cli
-[psmux-shield]: https://img.shields.io/github/v/release/psmux/psmux?style=flat-square&logo=gnometerminal&logoColor=24283B&label=psmux&labelColor=BB9AF7&color=3D59A1
+[psmux-shield]: https://img.shields.io/github/v/release/psmux/psmux?style=plastic&logo=gnometerminal&logoColor=24283B&label=psmux&labelColor=BB9AF7&color=3D59A1
 [psmux-url]: https://github.com/psmux
