@@ -33,10 +33,52 @@ require("gerrrt.config.autocmds")
 require("gerrrt.config.clipboard")
 require("gerrrt.config.providers")
 
+-- ── the lockfile lives in STATE, not in the config tree ─────────────────────────────────
+-- lazy.nvim REWRITES its lockfile in place on every plugin install/update, and an OS repo
+-- bootstrap-symlinks ~/.config/nvim into the VENDORED core/nvim/ tree — the one tree that
+-- must stay byte-for-byte upstream. So on any machine that runs nvim at all, a file inside
+-- that tree was permanently dirty (#465).
+--
+-- Not a tidiness problem. Opening the editor ONCE was enough: a fresh openSUSE box repinned
+-- 10 plugins and a fresh Gentoo box 2, with nobody running :Lazy update. Consumers gate the
+-- vendoring contract — `make check-core`, a no-core-edits pre-commit hook, core-integrity at
+-- PR time — and all of them correctly failed closed on it, so `make test` was red on any box
+-- where nvim had been opened until someone ran `git checkout -- core/nvim/lazy-lock.json`.
+-- Worse, a routine `git add -A` swept the drift into an unrelated commit on any box where
+-- the guard was not installed. "Do not edit core/" is not a rule an operator can keep when
+-- the writer is the very tool the file configures.
+--
+-- The fix is the move v4 already made for zsh history (15-history.zsh: HISTFILE under
+-- $XDG_STATE_HOME because history is mutable STATE, not config), for the same reason:
+--
+--   · $XDG_STATE_HOME/nvim/lazy-lock.json  — the MUTABLE lockfile this machine writes.
+--   · core/nvim/lazy-lock.json             — the read-only fleet SEED. Still the
+--     reproducible plugin set every machine starts from; `make update-nvim-plugins`
+--     upstream remains the only thing that changes it.
+--
+-- The seed copy below is what preserves reproducibility on a fresh machine: state absent
+-- means first run, so start from the fleet's pins rather than resolving every plugin's
+-- default branch afresh. stdpath("state") rather than expanding $XDG_STATE_HOME by hand —
+-- it is defined even when the env var is not.
+local lockfile = vim.fs.joinpath(vim.fn.stdpath("state"), "lazy-lock.json")
+local seed = vim.fs.joinpath(vim.fn.stdpath("config"), "lazy-lock.json")
+local uv = vim.uv or vim.loop
+if not uv.fs_stat(lockfile) and uv.fs_stat(seed) then
+	vim.fn.mkdir(vim.fn.stdpath("state"), "p")
+	-- Best-effort: a failed seed means lazy resolves from the specs instead, which is a
+	-- slower first run, not a broken one. Never abort startup over it.
+	local ok, err = uv.fs_copyfile(seed, lockfile)
+	if not ok then
+		vim.notify("lazy: could not seed lockfile from Core (" .. tostring(err) .. ")", vim.log.levels.WARN)
+	end
+end
+
 require("lazy").setup({
 	spec = {
 		{ import = "gerrrt.plugins" },
 	},
+	-- See the note above: mutable state, never the vendored config tree.
+	lockfile = lockfile,
 	install = {
 		colorscheme = {
 			"tokyonight",
