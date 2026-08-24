@@ -287,6 +287,34 @@ Scope stops there deliberately:
   shell toolchain; `mise ls-remote ruby` listing versions does not establish that
   installing one works. (On the reference host, as of 2026-07, ruby 4.0.6 was the
   only one present — a snapshot, not an invariant.)
+
+  **It needs the DevKit, and the winget id you pick decides whether it has one.**
+  `RubyInstallerTeam.Ruby.4.0` (what the reference host runs) ships no MSYS2
+  toolchain, so **every gem with a C extension fails to build** — `ruby-lsp` and
+  `rubocop` both do, via `prism`. The failure does not name the real cause:
+
+  ```
+  make: *** No rule to make target '/C/Ruby40-x64/include/ruby-4.0.0/ruby.h' ...
+  process_begin: CreateProcess(NULL, rm -f, ...) failed.
+  ```
+
+  With no `C:\Ruby40-x64\msys64`, `gem` falls back to whatever is on PATH — here
+  scoop's `mingw` GNU Make, a native-Windows make with no MSYS coreutils (hence no
+  `rm`) that mangles the drive-letter prerequisite `C:/Ruby40-x64/...` into
+  `/C/Ruby40-x64/...`. `ridk version` shows the same split from the other side: ruby
+  was **built with** MSYS2 gcc 16.1.0, but the `cc` it finds is Strawberry Perl's
+  MinGW-W64 13.2.0. Fix it once, from an **elevated** shell (the MSYS2 installer
+  cannot self-elevate, and fails with a clean rollback if you try from a normal one):
+
+  ```powershell
+  ridk install 1 3
+  ```
+
+  Ruby is deliberately **not** in `winget.json`: the lock-drift gate
+  (`tests/Packages.Tests.ps1`) only accepts ids `Update-PackageLock.ps1` can resolve
+  to an installed version, so declaring `RubyInstallerTeam.RubyWithDevKit.4.0` while
+  the box carries plain `Ruby.4.0` would sit permanently unlockable. Declaring the
+  DevKit id is the right move only if the host actually switches to that package.
 - **php / java / julia / composer** stay scoop-owned, declared in
   `packages/scoopfile.json`.
 

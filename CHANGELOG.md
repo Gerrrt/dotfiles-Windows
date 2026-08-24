@@ -6,6 +6,23 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Docs
+
+- **Why Mason can't install `ruby-lsp` on this host, written down where package
+  decisions live.** The winget package the box runs, `RubyInstallerTeam.Ruby.4.0`,
+  ships no MSYS2 DevKit, so every gem with a C extension fails to build — `ruby-lsp`
+  and `rubocop` both die on `prism`. The error names neither ruby nor the DevKit
+  (`No rule to make target '/C/Ruby40-x64/include/ruby-4.0.0/ruby.h'`): with no
+  `msys64`, `gem` falls back to scoop's `mingw` make, which has no `rm` and mangles
+  the drive-letter path into an MSYS-style one. `docs/PACKAGE-OWNERSHIP.md` now
+  carries the symptom, the mechanism, and the one-line elevated fix
+  (`ridk install 1 3`), next to the existing ruby-ownership reasoning.
+
+  It also records why ruby stays **out** of `winget.json` rather than being declared
+  like node was: the lock-drift gate only accepts ids `Update-PackageLock.ps1` can
+  resolve to an installed version, so declaring `RubyWithDevKit.4.0` on a box running
+  plain `Ruby.4.0` would sit permanently unlockable and red. (`docs/PACKAGE-OWNERSHIP.md`)
+
 ### Fixed
 
 - **`.core-ref` recorded `tag = v4-19-g10ad221` — the moving major alias, not the release
