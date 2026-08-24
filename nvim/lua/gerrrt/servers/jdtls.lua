@@ -7,8 +7,11 @@
 --         Maven/Gradle/Ant root_markers come from nvim-lspconfig's lsp/jdtls.lua.
 -- GUARD : lspconfig ships `cmd` as a FUNCTION, so this server is registered in servers/init.lua's
 --         `fn_cmd_binaries` (binary "jdtls") for the binary-availability guard.
--- INSTALL: mason — "jdtls" (needs a JDK/JRE; mise pins temurin-21). Formatter: google-java-format
---         (conform). Linter: checkstyle (nvim-lint, gated on a checkstyle config).
+-- INSTALL: mason — "jdtls" (needs a JDK/JRE; mise pins temurin-21 — on the UNIX FLEET. On
+--         dotfiles-Windows, the one host that vendors this tree without that pin, the JDK is
+--         scoop-owned openjdk25. Either satisfies jdtls; only the owner and the major differ.)
+--         Formatter: google-java-format (conform). Linter: checkstyle (nvim-lint, gated on a
+--         checkstyle config).
 -- ================================================================================================
 return {
 	filetypes = { "java" },
