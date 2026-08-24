@@ -69,6 +69,38 @@ return {
 			-- are never auto-formatted. (autocmds.lua also hard-skips formatting for ft=zsh, and
 			-- utils/lsp.lua disables bashls's LSP formatting so the "fallback" path can't shfmt it.)
 		},
+		-- Per-formatter overrides layered on conform's builtins (conform merges these over the
+		-- builtin spec, so `command`/`stdin`/`exit_codes` are inherited — only `args` is replaced).
+		formatters = {
+			-- rubocop --server is a SILENT NO-OP on Windows (#646), exactly as in
+			-- plugins/nvim-lint.lua. Server mode needs fork/UNIX sockets; a native-Windows ruby
+			-- prints "RuboCop server is not supported by this Ruby.", writes NOTHING to stdout, and
+			-- exits 0 — so conform sees an empty result, leaves the buffer untouched, and reports
+			-- no error. :ConformInfo still shows rubocop `available` (the binary really is there),
+			-- which is what makes this so quiet: format-on-save simply does nothing on ruby files.
+			--
+			-- Resolved lazily and FILTERED from the upstream args, so this can't drift if conform
+			-- changes them, and requiring the builtin module is deferred to format time rather than
+			-- lazy-spec evaluation. Unix keeps --server — there it is a real speedup.
+			rubocop = {
+				args = function(self, ctx)
+					local base = require("conform.formatters.rubocop").args
+					if type(base) == "function" then
+						base = base(self, ctx)
+					end
+					if vim.fn.has("win32") == 0 then
+						return base
+					end
+					local kept = {}
+					for _, a in ipairs(base or {}) do
+						if a ~= "--server" then
+							kept[#kept + 1] = a
+						end
+					end
+					return kept
+				end,
+			},
+		},
 	},
 	-- No `config` function: `config = function(_, opts) require("conform").setup(opts) end` is
 	-- byte-for-byte what lazy.nvim does by default for a spec that has `opts` and a main module,

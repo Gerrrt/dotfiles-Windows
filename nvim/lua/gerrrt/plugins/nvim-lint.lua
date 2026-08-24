@@ -106,6 +106,30 @@ return {
 			-- NOTE: no zig/graphql entry — their LSPs (zls, graphql) carry the diagnostics.
 		}
 
+		-- rubocop --server is a SILENT NO-OP on Windows (#646). Server mode needs fork/UNIX
+		-- sockets, so a native-Windows ruby prints "RuboCop server is not supported by this Ruby.",
+		-- emits NO json — and exits 0. That last part is why nothing ever surfaced: nvim-lint parses
+		-- an empty payload, finds no offenses, and has no non-zero status to report. No error in
+		-- :messages, no vim.notify, and `executable('rubocop')` is still 1 — every signal says
+		-- healthy while ruby files silently go unlinted. (ruby_lsp's own Prism diagnostics mask it
+		-- further: you still see A diagnostic on the buffer, just never a rubocop one.)
+		--
+		-- FILTER the upstream args rather than restating them, so an upstream change to the arg list
+		-- can't silently drift away from this override. Unix keeps --server — there it is a real
+		-- speedup, not a no-op.
+		if vim.fn.has("win32") == 1 then
+			local rc = lint.linters.rubocop
+			if rc and type(rc.args) == "table" then
+				local kept = {}
+				for _, a in ipairs(rc.args) do
+					if a ~= "--server" then
+						kept[#kept + 1] = a
+					end
+				end
+				rc.args = kept
+			end
+		end
+
 		-- SAST (security static analysis): semgrep, run ONLY where a project opts in with a semgrep
 		-- config (see `gated` below). It is not a per-filetype linter in the map above; instead it is
 		-- appended as a candidate for the security-relevant filetypes here, so one entry covers many
