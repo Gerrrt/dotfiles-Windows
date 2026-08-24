@@ -45,7 +45,6 @@ function Get-NvimSyncRefPlan {
     return [pscustomobject]@{ Mode = 'branch'; Target = $Branch; Label = "branch $Branch" }
 }
 
-# Library-only hook for the test suite: expose the resolver without syncing.
 # --- Write-CoreRefFile --------------------------------------------------------
 # Write .core-ref with explicit LF and no BOM. `Set-Content -Encoding UTF8` writes
 # CRLF on Windows, so every sync left the working tree with CRLF that .gitattributes
@@ -64,6 +63,52 @@ function Write-CoreRefFile {
     }
 }
 
+# --- Get-CoreDescribeTag ------------------------------------------------------
+# Nearest Core RELEASE tag describing $Rev in $RepoPath — 'v2.0.0' when the vendored
+# commit IS a release, 'v2.0.0-3-gabc1234' a few commits past one. Empty (and the
+# `tag` line then omitted) when nothing matches: Core carries no release tag yet, the
+# clone is still shallow past the nearest one, or -CoreLocal isn't a git repo at all.
+#
+# --match 'v[0-9]*.[0-9]*.[0-9]*' IS LOAD-BEARING, not tidiness (#202; ports the same
+# fix from dotfiles-core#515 / sync-core.sh). Every Core release ALSO carries a moving
+# major alias (`v4`), re-pointed on each cut by Core's scripts/tag-release.sh with
+# `git tag -fa`, AFTER the specific tag. Both are annotated and both sit on the release
+# commit, so `git describe` breaks the tie by TAGGER TIME and prefers the alias. That
+# is how nvim/.core-ref came to record `tag = v4-19-g10ad221`: a provenance field
+# naming a target that moves out from under it, so the same recorded string means a
+# DIFFERENT commit after the next release. The two-dot shape excludes the alias by
+# construction. (It also immunizes a -CoreLocal run against a locally STALE alias —
+# a plain `git fetch` never force-updates an existing tag.)
+#
+# Don't "simplify" by dropping --tags: that restricts describe to annotated tags, and
+# the alias is annotated too, so it would fix nothing.
+#
+# When ONLY an alias exists, describe finds nothing and the caller omits the line — an
+# ABSENT tag is strictly better than a wrong one, and `commit` (the full SHA the parity
+# gate and dotfiles-doctor actually read) stays the source of truth either way.
+#
+# The single-quoted glob reaches git VERBATIM: PowerShell does not expand wildcards in
+# native-command arguments (that is a POSIX shell behaviour); the quotes only stop its
+# own parser from reading `[`, `]` and `*`.
+#
+# try/catch, not `2>$null` alone: today $PSNativeCommandUseErrorActionPreference is
+# $false, so a failing git yields $null instead of throwing under this script's
+# ErrorActionPreference='Stop'. If a future pwsh flips that default, the redirect on its
+# own would stop protecting the contract and a tag-less Core would abort the whole sync.
+# The contract is "best-effort, never fatal" — state it rather than inherit it.
+# (Kept identical in starship-sync.ps1 — the two scripts are deliberate twins.)
+function Get-CoreDescribeTag {
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][string]$RepoPath,
+        [string]$Rev = 'HEAD'
+    )
+    try { $t = (& git -C $RepoPath describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' $Rev 2>$null) }
+    catch { return '' }
+    if ($t) { "$t".Trim() } else { '' }
+}
+
+# Library-only hook for the test suite: expose the helpers without syncing.
 if ($env:DOTFILES_NVIMSYNC_LIBONLY -eq '1') { return }
 
 $ErrorActionPreference = 'Stop'
@@ -130,17 +175,31 @@ try {
     # clone, best-effort deepen + fetch tags so describe resolves the nearest release
     # tag, matching how dotfiles-core's sync-core.sh computes core_tag from a full clone.
     # (-CoreLocal is the user's OWN clone — don't mutate it; rely on its existing tags.)
+    #
+    # This deepen got MORE load-bearing with #202, not less: on a shallow clone the only
+    # tag describe can see is one sitting ON the tip, and on a release commit the newest
+    # such tag is the moving `vN` alias — which the shape filter now (correctly) rejects.
+    # Without the tags-and-history fetch below, the field would simply go empty most runs.
     if (-not $CoreLocal) {
         git -C $srcRepo fetch --tags --unshallow --quiet 2>$null
         # --unshallow errors on an already-complete repo; fall back to a plain tag fetch.
         if ($LASTEXITCODE -ne 0) { git -C $srcRepo fetch --tags --quiet 2>$null }
     }
-    # Nearest Core release tag describing the vendored commit (e.g. 'v2.0.0', or
-    # 'v2.0.0-3-gabc1234' a few commits past it). Lets fleet-drift label the Windows
-    # row by release name like the Unix repos' core.lock 'core_tag', instead of a bare
-    # SHA. Best-effort: empty when Core carries no tags yet, or for a non-git -CoreLocal
-    # — in which case the line is omitted (the SHA stays the source of truth).
-    $tag  = (& git -C $srcRepo describe --tags HEAD 2>$null)
+    # Nearest Core release tag describing the vendored commit — the field Core's
+    # fleet-drift.sh reads so the Windows row can be labelled by RELEASE NAME rather
+    # than a bare SHA, like the Unix repos' core.lock 'core_tag'. See Get-CoreDescribeTag
+    # above for why the vX.Y.Z shape filter is load-bearing (#202) and why an omitted
+    # line is the right failure mode.
+    #
+    # Describe HEAD, not $sha: unlike Core's sync-core.sh there is no re-resolution race
+    # here (the temp clone is detached at a fixed commit, and -CoreLocal is a static
+    # tree), and HEAD keeps the three provenance reads above/below visibly consistent.
+    #
+    # Don't reorder this with the `git show` below it. That show resets $LASTEXITCODE,
+    # and .github/workflows/nvim-sync.yml runs this script under `shell: pwsh`, whose
+    # epilogue is `exit $LASTEXITCODE` — a describe that legitimately finds nothing must
+    # not turn the bot run red.
+    $tag  = Get-CoreDescribeTag -RepoPath $srcRepo -Rev 'HEAD'
     $when = (& git -C $srcRepo show -s --format=%cs HEAD 2>$null)
     $refFile = Join-Path $Target '.core-ref'
     $now = [DateTimeOffset]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
