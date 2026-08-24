@@ -310,6 +310,12 @@ Scope stops there deliberately:
   ridk install 1 3
   ```
 
+  The reference host ran this on **2026-08-24**; `ridk version` now reports an
+  `msys2:` section and `cc: gcc (Rev8, Built by MSYS2 project) 15.2.0` instead of
+  Strawberry's 13.2.0. `gem install ruby-lsp` then pulls its six gems and builds
+  both native extensions (`prism`, `rbs`) clean. This is host state, not repo
+  state — a rebuilt box gets plain `Ruby.4.0` again and needs the command above.
+
   Ruby is deliberately **not** in `winget.json`: the lock-drift gate
   (`tests/Packages.Tests.ps1`) only accepts ids `Update-PackageLock.ps1` can resolve
   to an installed version, so declaring `RubyInstallerTeam.RubyWithDevKit.4.0` while

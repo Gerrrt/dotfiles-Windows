@@ -18,6 +18,11 @@ so entries are grouped by theme rather than strict semver releases.
   carries the symptom, the mechanism, and the one-line elevated fix
   (`ridk install 1 3`), next to the existing ruby-ownership reasoning.
 
+  Confirmed fixed on the reference host on 2026-08-24: `ridk install 1 3` (elevated)
+  populated `C:\Ruby40-x64\msys64`, and `gem install ruby-lsp` now builds both native
+  extensions clean. That is host state, not repo state — a rebuilt box gets plain
+  `Ruby.4.0` again and needs the same command.
+
   It also records why ruby stays **out** of `winget.json` rather than being declared
   like node was: the lock-drift gate only accepts ids `Update-PackageLock.ps1` can
   resolve to an installed version, so declaring `RubyWithDevKit.4.0` on a box running
