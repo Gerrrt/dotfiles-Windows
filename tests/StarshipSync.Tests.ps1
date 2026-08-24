@@ -8,6 +8,7 @@ BeforeAll {
     $RepoRoot = Split-Path -Parent $PSScriptRoot
     $env:DOTFILES_STARSHIPSYNC_LIBONLY = '1'
     . (Join-Path $RepoRoot 'starship-sync.ps1')
+    . (Join-Path $PSScriptRoot '_TestHelpers.ps1')
 }
 
 Describe 'Get-StarshipSyncPin' {
@@ -71,5 +72,20 @@ Describe 'Get-StarshipSyncRefPlan' {
     }
     It 'rejects -Ref combined with -CoreLocal' {
         { Get-StarshipSyncRefPlan -Ref 'abc1234' -CoreLocal 'C:\src\dotfiles-core' } | Should -Throw
+    }
+}
+
+Describe 'Get-CoreDescribeTag (starship twin)' {
+    # The two sync scripts duplicate this helper on purpose (same convention as
+    # Write-CoreRefFile). One assertion here so a fix applied to only ONE twin — the
+    # shape of #202 itself, which named nvim but left starship's identical call
+    # untouched — fails the build. Full behavioural coverage lives in NvimSync.Tests.ps1.
+    It 'resolves the specific release, matching nvim-sync.ps1''s copy' {
+        if (-not (Get-Command git -CommandType Application -ErrorAction SilentlyContinue)) {
+            Set-ItResult -Skipped -Because 'git is not on PATH'; return
+        }
+        $fx = New-DotCoreTagFixture -Release 'v9.9.9' -Alias 'v9' -Past 2
+        try { Get-CoreDescribeTag -RepoPath $fx | Should -Match '^v9\.9\.9-2-g' }
+        finally { Remove-Item $fx -Recurse -Force -ErrorAction SilentlyContinue }
     }
 }

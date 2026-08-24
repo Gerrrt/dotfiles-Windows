@@ -6,6 +6,62 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Docs
+
+- **Why Mason can't install `ruby-lsp` on this host, written down where package
+  decisions live.** The winget package the box runs, `RubyInstallerTeam.Ruby.4.0`,
+  ships no MSYS2 DevKit, so every gem with a C extension fails to build — `ruby-lsp`
+  and `rubocop` both die on `prism`. The error names neither ruby nor the DevKit
+  (`No rule to make target '/C/Ruby40-x64/include/ruby-4.0.0/ruby.h'`): with no
+  `msys64`, `gem` falls back to scoop's `mingw` make, which has no `rm` and mangles
+  the drive-letter path into an MSYS-style one. `docs/PACKAGE-OWNERSHIP.md` now
+  carries the symptom, the mechanism, and the one-line elevated fix
+  (`ridk install 1 3`), next to the existing ruby-ownership reasoning.
+
+  Confirmed fixed on the reference host on 2026-08-24: `ridk install 1 3` (elevated)
+  populated `C:\Ruby40-x64\msys64`, and `gem install ruby-lsp` now builds both native
+  extensions clean. That is host state, not repo state — a rebuilt box gets plain
+  `Ruby.4.0` again and needs the same command.
+
+  It also records why ruby stays **out** of `winget.json` rather than being declared
+  like node was: the lock-drift gate only accepts ids `Update-PackageLock.ps1` can
+  resolve to an installed version, so declaring `RubyWithDevKit.4.0` on a box running
+  plain `Ruby.4.0` would sit permanently unlockable and red. (`docs/PACKAGE-OWNERSHIP.md`)
+
+### Fixed
+
+- **`.core-ref` recorded `tag = v4-19-g10ad221` — the moving major alias, not the release
+  it describes.** (#202) Every Core cut writes the specific `vX.Y.Z` and _then_ force-repoints
+  the major alias `v4` onto the same commit (`tag-release.sh`, `git tag -fa`, alias second).
+  Both tags are annotated and both sit on the release commit, so `git describe` breaks the tie
+  by **tagger time** and picks the alias. That is a provenance field naming a target that is
+  deliberately moved on the next release: the recorded string silently reinterprets itself, and
+  re-running the same command against the same commit today returns `v4.15.1-19-g10ad221`.
+  `commit` was always authoritative — only `tag` lied, and it lied in the direction that looks
+  fine until you check.
+
+  Both sync scripts now filter describe to the `vX.Y.Z` shape
+  (`--match 'v[0-9]*.[0-9]*.[0-9]*'`), which excludes bare-major aliases by construction —
+  the identical fix Core shipped for `core.lock` in dotgibson/dotfiles-core#515, so the
+  Windows row and the Unix repos' `core_tag` agree on what a release name means. When only an
+  alias exists, describe finds nothing and the `tag` line is **omitted**: an absent tag is
+  honest where `v4` was not, and the SHA stays the source of truth either way. `nvim/.core-ref`
+  is corrected in place; `starship/.core-ref` already read `v4.9.0` because its last sync was a
+  pinned `-Ref` landing exactly on a release commit — the same latent bug, just not yet visible.
+  The filter also immunizes `-CoreLocal` runs against a **locally stale** alias, since a plain
+  `git fetch` never force-updates an existing tag (this box's own Core clone has `v4` frozen at
+  v4.7.0's commit).
+
+  The describe call also moved **above** each script's `*_LIBONLY` hook as `Get-CoreDescribeTag`,
+  which is the part that keeps it fixed: the old inline call sat below the hook and was
+  structurally unreachable from Pester, which is exactly why a wrong value shipped unnoticed.
+  The new fixture (`New-DotCoreTagFixture` in `tests/_TestHelpers.ps1`) tags one commit
+  `v9.9.9` then `v9` in release order, and a companion assertion proves a bare `describe --tags`
+  still gets that fixture *wrong* — so if the reproduction ever stops reproducing, the suite says
+  so instead of going quietly green.
+  (`nvim-sync.ps1`, `starship-sync.ps1`, `nvim/.core-ref`, `tests/_TestHelpers.ps1`,
+  `tests/NvimSync.Tests.ps1`, `tests/StarshipSync.Tests.ps1`)
+
 ## [v1.6.0] - 2026-08-05
 
 ### Added
