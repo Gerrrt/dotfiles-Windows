@@ -1,8 +1,8 @@
 -- ================================================================================================
 -- TITLE : nvim-lint | standalone linter runner
 -- LINKS : https://github.com/mfussenegger/nvim-lint
--- ABOUT : Runs a filetype's linter on write / leaving insert mode, surfacing results as
---         normal diagnostics (Trouble, <leader>cd, [d/]d all work). Binaries installed by
+-- ABOUT : Runs a filetype's linter on open / write / leaving insert mode, surfacing results
+--         as normal diagnostics (Trouble, <leader>cd, [d/]d all work). Binaries installed by
 --         mason-tool-installer in plugins/mason-tool-installer.lua.
 -- ASTRAL: Python is intentionally NOT here — the ruff language server (servers/ruff.lua)
 --         provides Python lint diagnostics AND code actions. Listing ruff here too would
@@ -15,6 +15,28 @@ return {
 	-- initial buffer once at the end (mirroring nvim-treesitter's initial-buffer replay), otherwise
 	-- the very first file you open would show no diagnostics until its first save.
 	event = "User FilePost",
+	-- MASON MUST LOAD FIRST — the replay just described (end of config()) spawns Mason-installed
+	-- binaries, and mason.setup() is what puts them on PATH: it prepends <data>/mason/bin to
+	-- vim.env.PATH. nvim-lspconfig loads on this SAME event and already pulls mason in as ITS
+	-- dependency, so mason was always loading here — just not in a guaranteed order relative to us.
+	-- lazy.nvim orders a plugin against its DECLARED DEPENDENCIES only, never against another plugin
+	-- on the same event, so the replay's try_lint raced mason's PATH prepend: win it and diagnostics
+	-- appear, lose it and vim.uv.spawn gets ENOENT on a bare `rubocop` (#652).
+	--
+	-- MEASURED, linted-on-open over six runs each: ruby/rubocop 4/6 on macOS (dotfiles-MacBook#191)
+	-- and 3/6 on native Windows, markdown/markdownlint-cli2 2/6 — but sh/shellcheck, which lives on
+	-- the PATH nvim inherits rather than under mason, 6/6, and rubocop itself 6/6 once mason's bin
+	-- was pre-seeded onto PATH before nvim started. `:w` always worked, because by the first save
+	-- mason has long since fixed PATH — which is what made this read as "the linter is flaky" rather
+	-- than "the binary was not on PATH yet", and why it went unexplained for two issues.
+	--
+	-- An HONESTY fix, not a speed-up (cf. blink.cmp in plugins/nvim-lspconfig.lua): the load already
+	-- happened at this event, it simply was not declared, so this costs no startup time. `opts = {}`
+	-- is repeated from nvim-lspconfig's fragment DELIBERATELY — lazy merges fragments by plugin name,
+	-- so a bare string here would leave mason.setup() running only as a side effect of that OTHER
+	-- spec, and an unrelated edit to it could silently un-fix this. Both fragments merge to the same
+	-- empty table; setup still runs exactly once.
+	dependencies = { { "mason-org/mason.nvim", opts = {} } },
 	config = function()
 		local lint = require("lint")
 
