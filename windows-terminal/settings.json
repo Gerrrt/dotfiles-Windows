@@ -7,17 +7,17 @@
             "command":
             {
                 "action": "scrollToMark",
-                "direction": "next"
+                "direction": "previous"
             },
-            "id": "User.scrollToMark.2A0DA8E0"
+            "id": "User.scrollToMark.D3F0B923"
         },
         {
             "command":
             {
                 "action": "scrollToMark",
-                "direction": "previous"
+                "direction": "next"
             },
-            "id": "User.scrollToMark.D3F0B923"
+            "id": "User.scrollToMark.2A0DA8E0"
         }
     ],
     "alwaysShowTabs": true,
@@ -29,32 +29,32 @@
     "keybindings":
     [
         {
-            "id": "Terminal.MoveFocusDown",
-            "keys": "alt+down"
-        },
-        {
             "id": "Terminal.SplitPaneRight",
             "keys": "alt+shift+plus"
+        },
+        {
+            "id": "Terminal.MoveFocusDown",
+            "keys": "alt+down"
         },
         {
             "id": "Terminal.SplitPaneDown",
             "keys": "alt+shift+minus"
         },
         {
-            "id": "Terminal.FindText",
-            "keys": "ctrl+shift+f"
-        },
-        {
-            "id": "Terminal.MoveFocusUp",
-            "keys": "alt+up"
+            "id": "Terminal.ClosePane",
+            "keys": "ctrl+shift+w"
         },
         {
             "id": "Terminal.MoveFocusRight",
             "keys": "alt+right"
         },
         {
-            "id": "Terminal.ClosePane",
-            "keys": "ctrl+shift+w"
+            "id": "Terminal.MoveFocusUp",
+            "keys": "alt+up"
+        },
+        {
+            "id": "Terminal.FindText",
+            "keys": "ctrl+shift+f"
         },
         {
             "id": "Terminal.MoveFocusLeft",
@@ -185,6 +185,12 @@
                 "guid": "{bae84d84-d8a8-59a4-bbed-d6da05a78622}",
                 "hidden": false,
                 "name": "kali-linux",
+                "source": "Microsoft.WSL"
+            },
+            {
+                "guid": "{83a17f26-4153-5c35-86cd-658378fd1631}",
+                "hidden": false,
+                "name": "KaliPurple",
                 "source": "Microsoft.WSL"
             }
         ]
