@@ -29,3 +29,8 @@ coverage.xml
 # OS cruft
 Thumbs.db
 Desktop.ini
+
+# Crash dumps. `core.[0-9]*` and NOT `core.*`: the narrow rule matches the kernel/glibc
+# `core.<pid>` spelling and nothing else. A blanket `core.*` would silently hide the next
+# tracked core.<something> anyone adds. Spelling kept identical across the fleet.
+core.[0-9]*
