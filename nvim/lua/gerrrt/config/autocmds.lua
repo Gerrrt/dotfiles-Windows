@@ -55,7 +55,11 @@ local on_attach = require("gerrrt.utils.lsp").on_attach
 --                after startup (neovim runtime lua/vim/lsp.lua — the `vim_did_enter` branch),
 --              • gitsigns iterates nvim_list_bufs() in its setup,
 --              • todo-comments attaches to all bufs in visible windows,
---              • nvim-lint is driven by BufWritePost/InsertLeave only — nothing to replay.
+--              • nvim-lint replays the triggering buffer ITSELF at the end of its config()
+--                (plugins/nvim-lint.lua) — so it needs no help from this event either, but it
+--                DOES need mason.nvim loaded before that replay spawns a Mason-installed
+--                linter. Load order within one dispatch does not supply that; nvim-lint's own
+--                `dependencies` does, which is why the spec declares mason there (#652).
 --            A plugin that needs options set AT READ TIME (vim-sleuth) must NOT be moved here, and
 --            one that is already `ft`-gated (nvim-colorizer) is better off staying that way.
 local filepost_group = vim.api.nvim_create_augroup("GerrrtFilePost", { clear = true })
