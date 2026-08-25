@@ -14,6 +14,38 @@ return {
 	"stevearc/conform.nvim",
 	event = { "BufWritePre" },
 	cmd = { "ConformInfo" },
+	-- MASON MUST LOAD FIRST — same undeclared dependency as plugins/nvim-lint.lua (#652), with a
+	-- worse failure shape. Nearly every formatter mapped below is Mason-installed (prettierd,
+	-- gofumpt, clang-format, php-cs-fixer, sql-formatter, ktlint, google-java-format, taplo, ...) and
+	-- resolves only once mason.setup() has prepended <data>/mason/bin to vim.env.PATH. conform
+	-- declared NO dependencies at all; mason arrived incidentally, pulled in by nvim-lspconfig
+	-- (`User FilePost`) and mason-tool-installer (`VeryLazy`), neither of which lazy.nvim orders
+	-- against us — it orders a plugin against its DECLARED dependencies only.
+	--
+	-- Unlike #652 this is NOT a race — it is DETERMINISTIC in the one-shot/scripted shape and
+	-- invisible interactively, because `-c` commands run BEFORE VimEnter: VeryLazy has not fired and
+	-- the `User FilePost` emit (vim.schedule'd in config/autocmds.lua) has not either, so at
+	-- BufWritePre mason has never loaded and PATH still lacks mason/bin.
+	--
+	-- MEASURED on macOS with a `{"a":1,   "b":[1,2,3]}` fixture and prettierd (Mason-ONLY here — a
+	-- formatter also present on the base PATH, like stylua or shfmt, formats either way and MASKS
+	-- this):
+	--   nvim --headless f.json -c 'write' -c 'qa!'  → 0/4 formatted (mason loaded=false,
+	--                                                 executable("prettierd")=0 at BufWritePre)
+	--   write deferred past startup (the interactive shape) → 4/4 (mason loaded=true, =1)
+	--
+	-- It fails SILENTLY: conform auto-skips a formatter that is not on PATH (the same self-gating
+	-- that makes the optional formatters below safe on a box that lacks them), so there is no error,
+	-- no notification — the file is simply written unformatted. That is exactly the profile that
+	-- needs a declared edge rather than a lucky one; scripted/`-c`-driven writes and `nvim -c` in a
+	-- Makefile or git hook hit it every single time.
+	--
+	-- Costs nothing interactively: mason has already loaded by your first save, and lazy will not
+	-- load it twice. `opts = {}` is repeated from the nvim-lspconfig/nvim-lint fragments
+	-- DELIBERATELY — lazy merges fragments by plugin name, so a bare string here would leave
+	-- mason.setup() running only as a side effect of ANOTHER spec, and an unrelated edit to it could
+	-- silently un-fix this. All fragments merge to the same empty table; setup still runs once.
+	dependencies = { { "mason-org/mason.nvim", opts = {} } },
 	keys = {
 		{
 			"<leader>cf",
