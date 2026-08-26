@@ -6,6 +6,27 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **`auto-tag.yml`'s Core pin moved from v4.12.0 to v5.0.2** — a major and eight minors
+  in one step, because nothing advances it automatically. This repo vendors no `core/`,
+  so it is absent from `scripts/os-repos.txt`: the fan-out never opens a PR here and
+  `make fleet-drift` cannot see it. The pin advances when a human moves it, and between
+  2026-08-16 and 2026-08-26 nobody did.
+
+  **Behaviourally this is a no-op, and it is worth being precise about why.**
+  `auto-tag-call.yml` and `scripts/auto-tag.sh` are byte-identical at v4.12.0 and v5.0.2
+  (`git rev-parse` on both blobs agrees), and the workflow re-checks-out dotfiles-core at
+  a moving alias for the scripts it runs — so this host was already executing the same
+  code as every "current" repo. What changes is that the recorded pin now matches what
+  actually runs, instead of reporting eighteen releases of drift that were not real.
+
+  The genuine defect the audit surfaced is upstream and is being fixed there: the
+  reusable workflows fetched their scripts from `v4` while every caller ran at `@v5`
+  (dotgibson/dotfiles-core#672). The comment above the pin now records that a SHA pin
+  freezes the workflow body but not the scripts it pulls, so the next reader does not
+  over-trust it.
+
 ### Docs
 
 - **Why Mason can't install `ruby-lsp` on this host, written down where package
