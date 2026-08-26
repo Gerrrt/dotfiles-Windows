@@ -35,8 +35,17 @@ jobs:
     # Fork guard (G9): only the canonical owner tags/releases. A fork pushing to its own
     # main must not attempt to cut a tag or a GitHub Release.
     if: github.repository_owner == 'dotgibson'
-    # Pinned to a full commit SHA, not the mutable @v4 tag, so a moved tag can't
+    # Pinned to a full commit SHA, not the mutable @v5 tag, so a moved tag can't
     # silently change what runs here — the same supply-chain discipline ci.yml applies
     # to its third-party actions. Bump the SHA (and the # v-comment) when intentionally
     # adopting a new auto-tag-call release.
-    uses: dotgibson/dotfiles-core/.github/workflows/auto-tag-call.yml@a3e75b561baa4b395d9e7055c6745074c2381e76 # v4.12.0
+    #
+    # CAVEAT, so the pin is not read as stronger than it is: this freezes the workflow
+    # BODY only. That body checks dotfiles-core out again at the moving `vN` alias to
+    # fetch the scripts it actually runs, so the script half tracks whatever that alias
+    # points at and the SHA pin does not cover it (dotgibson/dotfiles-core#672).
+    #
+    # This repo is outside scripts/os-repos.txt (it vendors no core/), so no fan-out and
+    # no `make fleet-drift` moves or reports this line — it advances only when a human
+    # does it. It sat at v4.12.0 until 2026-08-26 for exactly that reason.
+    uses: dotgibson/dotfiles-core/.github/workflows/auto-tag-call.yml@db940285d0cf9d71bf99bc78cda21e4862dd7419 # v5.0.2
