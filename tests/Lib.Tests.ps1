@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 #  tests/Lib.Tests.ps1  -  behavioral tests for the pure helpers in
 #  powershell/core/05-lib.ps1. Dot-sourced in isolation (no side effects).
 # ============================================================================
@@ -461,6 +461,110 @@ Describe 'Get-DotfilesLinkPlan' {
         foreach ($n in @($plan | Where-Object ParentMustExist).Name) {
             $n | Should -BeLike 'Windows Terminal settings*'
         }
+    }
+    It 'stubs exactly the three configs that have to survive an ssh session' {
+        # A symlink is unreadable from an ssh session (Redirection Guard, inherited by
+        # sshd from the Windows service lineage - docs/REMOTE-ACCESS.md), so these three
+        # are wired as real files that include the repo copy. If this list grows, the
+        # matching arm in Get-DotfilesStubContent must grow with it, or install.ps1
+        # falls back to a symlink and the ssh breakage comes straight back.
+        $plan = Get-DotfilesLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -LocalAppData 'L:' -Documents 'D:'
+        @($plan | Where-Object Kind -eq 'Stub').Name | Should -Be @(
+            'PowerShell profile'
+            '.gitconfig'
+            'ssh config'
+        )
+    }
+    It 'gives every other row Kind=Symlink (no row is left without a Kind)' {
+        $plan = Get-DotfilesLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -LocalAppData 'L:' -Documents 'D:'
+        foreach ($row in $plan) { $row.Kind | Should -BeIn @('Stub', 'Symlink') }
+        @($plan | Where-Object Kind -eq 'Symlink').Count | Should -Be ($plan.Count - 3)
+    }
+    It 'keeps .gitignore_global a symlink - a gitignore has no include directive' {
+        # Deliberate: global ignores survive ssh because the .gitconfig stub overrides
+        # core.excludesfile to the repo copy, NOT because this row is stubbed.
+        $plan = Get-DotfilesLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -LocalAppData 'L:' -Documents 'D:'
+        ($plan | Where-Object Name -eq '.gitignore_global').Kind | Should -Be 'Symlink'
+    }
+}
+
+Describe 'Get-DotfilesStubContent' {
+    It 'returns nothing for a row with no stub form, so the caller symlinks it' {
+        Get-DotfilesStubContent -Name 'nvim config' -Target 'R:\repo\nvim'             | Should -BeNullOrEmpty
+        Get-DotfilesStubContent -Name 'psmux.conf'  -Target 'R:\repo\psmux\psmux.conf' | Should -BeNullOrEmpty
+    }
+    It 'dot-sources the repo profile rather than linking to it' {
+        $c = Get-DotfilesStubContent -Name 'PowerShell profile' -Target 'R:\repo\powershell\profile.ps1'
+        $c | Should -Match ([regex]::Escape('R:\repo\powershell\profile.ps1'))
+        # dot-source, not '&': the profile defines functions that must land in the
+        # caller's scope, exactly as the symlinked profile used to.
+        $c | Should -Match ([regex]::Escape('. $dotfilesProfile'))
+    }
+    It 'writes the git include path with forward slashes' {
+        # git treats a backslash in a config value as an escape, so C:\Users would eat
+        # the \U and the include would silently never load.
+        $c = Get-DotfilesStubContent -Name '.gitconfig' -Target 'C:\repo\git\.gitconfig'
+        $c | Should -Match ([regex]::Escape('path = C:/repo/git/.gitconfig'))
+        $c | Should -Not -Match ([regex]::Escape('C:\repo'))
+    }
+    It 'overrides core.excludesfile AFTER the include, or the symlinked one wins' {
+        $c = Get-DotfilesStubContent -Name '.gitconfig' -Target 'C:\repo\git\.gitconfig'
+        $c | Should -Match ([regex]::Escape('excludesfile = C:/repo/git/.gitignore_global'))
+        $c.IndexOf('[core]') | Should -BeGreaterThan $c.IndexOf('[include]') -Because 'last value wins for a single-valued key'
+    }
+    It 'puts ssh Include first - ssh_config is first-obtained-value-wins' {
+        $c = Get-DotfilesStubContent -Name 'ssh config' -Target 'C:\repo\ssh\config'
+        $c | Should -Match ([regex]::Escape('Include C:\repo\ssh\config'))
+        $first = @($c -split "`r?`n" | Where-Object { $_ -and $_ -notmatch '^\s*#' })[0]
+        $first | Should -Match '^Include '
+    }
+}
+
+Describe 'Test-StubIntoRepo' {
+    BeforeAll {
+        $script:StubRoot = Join-Path $TestDrive 'repo'
+        New-Item -ItemType Directory -Force -Path $script:StubRoot | Out-Null
+    }
+    It 'is true for a real file that references the repo' {
+        $f = Join-Path $TestDrive 'stub.gitconfig'
+        "[include]`n`tpath = $($script:StubRoot -replace '\\','/')/git/.gitconfig" | Set-Content -LiteralPath $f
+        Test-StubIntoRepo -Link $f -Root $script:StubRoot | Should -BeTrue
+    }
+    It 'is false for a file of the user''s own that never mentions the repo' {
+        $f = Join-Path $TestDrive 'mine.gitconfig'
+        "[user]`n`tname = Someone" | Set-Content -LiteralPath $f
+        Test-StubIntoRepo -Link $f -Root $script:StubRoot | Should -BeFalse
+    }
+    It 'is false for a symlink - that is the state we are migrating away from' {
+        $target = Join-Path $script:StubRoot 'real.txt'
+        'x' | Set-Content -LiteralPath $target
+        $link = Join-Path $TestDrive 'as-symlink.txt'
+        New-Item -ItemType SymbolicLink -Path $link -Target $target -Force | Out-Null
+        Test-StubIntoRepo -Link $link -Root $script:StubRoot | Should -BeFalse
+    }
+    It 'is false for a missing path, an empty file, and a blank root' {
+        Test-StubIntoRepo -Link (Join-Path $TestDrive 'nope.txt') -Root $script:StubRoot | Should -BeFalse
+        $empty = Join-Path $TestDrive 'empty.txt'
+        Set-Content -LiteralPath $empty -Value ''
+        Test-StubIntoRepo -Link $empty -Root $script:StubRoot | Should -BeFalse
+        $f = Join-Path $TestDrive 'stub2.txt'
+        "path = $script:StubRoot" | Set-Content -LiteralPath $f
+        Test-StubIntoRepo -Link $f -Root '' | Should -BeFalse
+    }
+    It 'matches regardless of slash direction' {
+        $f = Join-Path $TestDrive 'slashy.txt'
+        "path = $($script:StubRoot -replace '\\','/')/git/.gitconfig" | Set-Content -LiteralPath $f
+        Test-StubIntoRepo -Link $f -Root $script:StubRoot | Should -BeTrue
+    }
+    It 'treats a bracketed path literally, not as a wildcard' {
+        # This predicate gates a delete in uninstall.ps1, so a '[' read as a character
+        # class would be a false positive on a file that was never ours.
+        $odd = Join-Path $TestDrive 'repo[1]'
+        New-Item -ItemType Directory -Force -Path $odd | Out-Null
+        $f = Join-Path $TestDrive 'odd.txt'
+        "path = $odd/git/.gitconfig" | Set-Content -LiteralPath $f
+        Test-StubIntoRepo -Link $f -Root $odd | Should -BeTrue
+        Test-StubIntoRepo -Link $f -Root (Join-Path $TestDrive 'repo1') | Should -BeFalse
     }
 }
 

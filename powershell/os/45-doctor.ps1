@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 #  os/45-doctor.ps1  -  `dotfiles-doctor`: one command that audits whether this
 #  host is wired up correctly, so a half-finished bootstrap stops being a silent
 #  mystery. Every check reports ok / warn / fail with a concrete fix hint.
@@ -17,7 +17,7 @@
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
 # provides: dotfiles-doctor, Get-DotRepoRevision
-# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, Get-ScoopBucketHealthResult, Get-StarshipVendorDetail, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn
+# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotRemoteWiringResult, Test-StubIntoRepo, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, Get-ScoopBucketHealthResult, Get-StarshipVendorDetail, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn
 # NB Get-ScoopBucketFault is deliberately absent: it comes from
 # packages/Check-PackageFreshness.ps1, dot-sourced on demand via its
 # DOTFILES_PKGFRESH_LIBONLY hook, not from the module or an earlier fragment — so it
@@ -91,6 +91,30 @@ function script:Test-LinkIntoRepo {
     if (-not $item -or $item.LinkType -ne 'SymbolicLink') { return $false }
     $target = @($item.Target)[0]
     return ($target -and $global:DOTFILES -and $target -like "*$($global:DOTFILES)*")
+}
+
+# --- Redirection Guard: is ProcessRedirectionTrustPolicy enforced here? -------
+# Host probe (fragment, not the module — the module keeps only pure logic). Under
+# enforcement a process cannot traverse a reparse point into a non-admin-owned
+# tree, which is why a symlinked config is unreadable over ssh but fine at the
+# desktop. See docs/REMOTE-ACCESS.md. Returns $null if the policy can't be read,
+# so the caller simply omits the row rather than guessing.
+function script:Get-DotRedirectionTrustEnforced {
+    try {
+        if (-not ('DotMitigationPolicy' -as [type])) {
+            Add-Type -ErrorAction Stop -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
+public static class DotMitigationPolicy {
+  [DllImport("kernel32.dll")] public static extern bool GetProcessMitigationPolicy(IntPtr h, int p, out uint b, IntPtr s);
+  [DllImport("kernel32.dll")] public static extern IntPtr GetCurrentProcess();
+}
+'@
+        }
+        $v = 0
+        # 15 = ProcessRedirectionTrustPolicy; bit 0 = EnforceRedirectionTrust.
+        if (-not [DotMitigationPolicy]::GetProcessMitigationPolicy([DotMitigationPolicy]::GetCurrentProcess(), 15, [ref]$v, [IntPtr]4)) { return $null }
+        return [bool]($v -band 1)
+    } catch { return $null }
 }
 
 # --- the probes (host-specific; each returns a DoctorResult) ------------------
@@ -179,11 +203,16 @@ function script:Get-DoctorResults {
         $r.Add((New-DoctorResult 'starship vendor' 'ok' (Get-StarshipVendorDetail -Sha "$ssSha" -When "$ssWhen" -Pinned "$ssPin")))
     }
 
-    # profile symlink
-    if (Test-LinkIntoRepo $PROFILE) {
-        $r.Add((New-DoctorResult 'Profile link' 'ok' 'symlinked into the repo'))
+    # profile wiring. The profile is a Kind='Stub' row (a real file that dot-sources
+    # the repo) because a symlinked $PROFILE is unreadable from an ssh session —
+    # Redirection Guard, see docs/REMOTE-ACCESS.md. A symlink still WORKS at the
+    # desktop, so it is a warn rather than a fail: nothing is broken until you ssh in.
+    if (Test-StubIntoRepo -Link $PROFILE -Root $global:DOTFILES) {
+        $r.Add((New-DoctorResult 'Profile link' 'ok' 'stub file, dot-sources the repo'))
+    } elseif (Test-LinkIntoRepo $PROFILE) {
+        $r.Add((New-DoctorResult 'Profile link' 'warn' 'symlinked — will not load over ssh' 're-run install.ps1 -SkipPackages'))
     } elseif (Test-Path $PROFILE) {
-        $r.Add((New-DoctorResult 'Profile link' 'warn' 'exists but not a repo symlink' 're-run install.ps1 -SkipPackages'))
+        $r.Add((New-DoctorResult 'Profile link' 'warn' 'exists but does not point into the repo' 're-run install.ps1 -SkipPackages'))
     } else {
         $r.Add((New-DoctorResult 'Profile link' 'fail' 'no $PROFILE' 'run install.ps1'))
     }
@@ -208,7 +237,16 @@ function script:Get-DoctorResults {
         foreach ($row in (Get-DotfilesLinkPlan -RepoRoot $root)) {
             if ($row.Name -eq 'PowerShell profile') { continue }
             if ($row.ParentMustExist) { $wtRows.Add($row); continue }
-            if (Test-LinkIntoRepo $row.Link)  { $r.Add((New-DoctorResult "link: $($row.Name)" 'ok' 'linked')) }
+            # Kind decides what "wired" looks like: a stub row wants a real file that
+            # includes the repo, a symlink row wants a symlink. Checking the wrong one
+            # would report every stub as broken (and vice versa).
+            if ($row.Kind -eq 'Stub') {
+                if (Test-StubIntoRepo -Link $row.Link -Root $global:DOTFILES) { $r.Add((New-DoctorResult "link: $($row.Name)" 'ok' 'stub -> repo')) }
+                elseif (Test-LinkIntoRepo $row.Link)                          { $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'symlinked — will not resolve over ssh' 're-run install.ps1 -SkipPackages')) }
+                elseif (Test-Path $row.Link)                                  { $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'present, does not include the repo' 're-run install.ps1 -SkipPackages')) }
+                else                                                          { $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'missing' 'run install.ps1')) }
+            }
+            elseif (Test-LinkIntoRepo $row.Link)  { $r.Add((New-DoctorResult "link: $($row.Name)" 'ok' 'linked')) }
             elseif (Test-Path $row.Link)      { $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'present, not a repo link' 're-run install.ps1 -SkipPackages')) }
             else                              { $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'missing' 'run install.ps1')) }
         }
@@ -230,6 +268,31 @@ function script:Get-DoctorResults {
                 $r.Add((New-DoctorResult 'link: Windows Terminal settings' 'warn' 'missing' 'run install.ps1'))
             } else {
                 $r.Add((New-DoctorResult 'link: Windows Terminal settings' 'ok' 'skipped (Windows Terminal not installed)'))
+            }
+        }
+        # Redirection Guard: would the wired configs survive an ssh session?
+        # Only the Kind='Stub' rows are actionable here. Plain symlink rows are also
+        # unreadable over ssh under enforcement, but that is a documented limitation
+        # with no fix at this layer (docs/REMOTE-ACCESS.md) — listing all eleven every
+        # run would bury the one row you can actually do something about.
+        $rgEnforced = Get-DotRedirectionTrustEnforced
+        if ($null -ne $rgEnforced) {
+            $stubRows = @(Get-DotfilesLinkPlan -RepoRoot $root | Where-Object Kind -eq 'Stub')
+            $bad = @()
+            foreach ($row in $stubRows) {
+                $item = Get-Item -LiteralPath $row.Link -Force -ErrorAction SilentlyContinue
+                $res  = Get-DotRemoteWiringResult -Name $row.Name -Kind $row.Kind `
+                            -IsReparsePoint ([bool]($item -and $item.LinkType)) `
+                            -Enforced $rgEnforced -Exists ([bool]$item)
+                if ($res.Status -ne 'ok') { $bad += $row.Name }
+            }
+            $where = if ($rgEnforced) { 'enforced in this session' } else { 'not enforced in this session' }
+            if ($bad.Count -eq 0) {
+                $r.Add((New-DoctorResult 'Remote (ssh) configs' 'ok' "wired as real files; Redirection Guard $where"))
+            } else {
+                $r.Add((New-DoctorResult 'Remote (ssh) configs' 'warn' `
+                    "$($bad.Count) still symlinked ($($bad -join ', ')) — will not resolve over ssh" `
+                    're-run install.ps1 -SkipPackages'))
             }
         }
     }

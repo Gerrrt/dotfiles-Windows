@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 #  tests/Module.Tests.ps1  -  the Dotfiles module's manifest + public surface.
 #
 #  Pins the curated export surface (B7) so a helper can't silently drop out of
@@ -43,8 +43,10 @@ Describe 'Dotfiles module exports' {
             'Test-DotGum', 'Test-DotEmailish',
             'Get-DotSpinnerFrame', 'Format-DotSpinnerLine', 'Invoke-DotSpinner', 'Test-SensitiveHistoryLine',
             'Get-DotStringSha256', 'Get-DotToolNudge', 'Get-DotfilesLinkPlan',
+            'Get-DotfilesStubContent', 'Test-StubIntoRepo',
             'Test-DotNonInteractiveArg', 'Test-InteractiveShell', 'Test-InMux',
             'ConvertTo-WslPath',
+            'ConvertTo-DotSshAlias', 'Get-DotWslSshPlan', 'Format-DotWslSshConfig', 'Get-DotRemoteWiringResult',
             'New-DoctorResult', 'Get-DoctorSummary', 'Get-DoctorGroup',
             'Get-FragmentHealthResult', 'Get-DotRepoVersionDetail',
             'Get-NvimVendorDetail', 'Get-StarshipVendorDetail', 'Get-DoctorFixPlan',

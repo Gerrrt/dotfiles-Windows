@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 #  install.ps1  -  bootstrap the Windows host
 #
 #  Usage (from the repo root):
@@ -172,7 +172,7 @@ function Test-CopyCurrent {
 # --- run accounting + UI --------------------------------------------------------
 # A single tally Link-Item updates, summarized at the end so the run reports what
 # actually changed (linked/copied/skipped/backed-up) instead of scrolling past.
-$script:LinkStats = [ordered]@{ linked = 0; copied = 0; skipped = 0; backedup = 0 }
+$script:LinkStats = [ordered]@{ linked = 0; copied = 0; stubbed = 0; skipped = 0; backedup = 0 }
 
 # Numbered, consistent section header (visual hierarchy + progress: [n/total]).
 # Keep in step with the Write-Step call count below (env, packages, configs,
@@ -193,6 +193,10 @@ function Get-InstallSummaryLines {
     @(
         "linked   : $($Stats.linked)"
         "copied   : $($Stats.copied)"
+        # Only surfaced when the caller actually tracks stubs. Kept conditional so an
+        # older/partial stats bag (and the unit test that passes one) renders unchanged
+        # rather than growing a bare "stubbed  : " line.
+        if ($Stats.Contains('stubbed')) { "stubbed  : $($Stats.stubbed)  (real file, includes the repo)" }
         "skipped  : $($Stats.skipped)  (already correct)"
         "backed up: $($Stats.backedup)"
     )
@@ -363,6 +367,85 @@ function Link-Item {
     }
 }
 
+# Write a Kind='Stub' row: a REAL file whose body (from Get-DotfilesStubContent)
+# pulls in the repo copy through the config format's own include mechanism. Used
+# instead of Link-Item for the configs that have to be readable from an ssh
+# session, where a symlink is not — see the Kind note on Get-DotfilesLinkPlan and
+# docs/REMOTE-ACCESS.md.
+#
+# Mirrors Link-Item's contract deliberately (idempotent skip, back up before
+# overwrite, honour -DryRun, same LinkStats) so the two paths behave identically
+# from the user's side and the summary stays truthful.
+function Write-StubItem {
+    param([string]$Name, [string]$Target, [string]$Link)
+
+    $content = Get-DotfilesStubContent -Name $Name -Target $Target
+    if ($null -eq $content) {
+        # Planned as a stub but no stub body exists — a bug in the plan, not the
+        # user's problem. Fall back to linking rather than leaving the row unwired.
+        Write-DotWarn "No stub body for '$Name' — falling back to a symlink." 'Please report this.'
+        Link-Item -Target $Target -Link $Link
+        return
+    }
+
+    # Idempotent: an existing stub that already points into the repo is left ALONE,
+    # content untouched. Test-StubIntoRepo is a reference check, not an equality
+    # check, precisely so a user's own added lines survive a re-install.
+    if (Test-StubIntoRepo -Link $Link -Root $RepoRoot) {
+        Write-Host "  ok      $Link (already wired)" -ForegroundColor DarkGray
+        $script:LinkStats.skipped++
+        return
+    }
+
+    if ($script:DryRun) {
+        if (Test-Path -LiteralPath $Link) { Write-DotHost "  would back up + write stub  $Link" -Color DarkYellow }
+        else                              { Write-DotHost "  would write stub  $Link" -Color Cyan }
+        return
+    }
+
+    $parent = Split-Path -Parent $Link
+    if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+
+    $backup = $null
+    if (Test-Path -LiteralPath $Link) {
+        if (-not (Confirm-Overwrite $Link)) {
+            Write-Host "  skip    $Link (kept existing, by request)" -ForegroundColor DarkGray
+            $script:LinkStats.skipped++
+            return
+        }
+        $stamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $backup = "$Link.$stamp.bak"
+        Move-Item -LiteralPath $Link -Destination $backup -Force
+        Write-DotHost "  backed up existing -> $backup" -Color DarkYellow
+        $script:LinkStats.backedup++
+    }
+
+    try {
+        # UTF8 (BOM-less via -Encoding utf8 on pwsh 6+) because git and ssh both read
+        # these as plain text and a BOM would land in the first directive.
+        Set-Content -LiteralPath $Link -Value $content -Encoding utf8 -ErrorAction Stop
+        Write-DotHost "  stubbed $Link" -Color Green
+        $script:LinkStats.stubbed++
+    } catch {
+        $failure = $_
+        $restored = $false
+        if ($backup -and (Test-Path -LiteralPath $backup)) {
+            if (Test-Path -LiteralPath $Link) { Remove-Item -LiteralPath $Link -Force -ErrorAction SilentlyContinue }
+            Move-Item -LiteralPath $backup -Destination $Link -Force -ErrorAction SilentlyContinue
+            $restored = Test-Path -LiteralPath $Link
+            if ($restored) {
+                Write-DotHost "  restored $Link from backup" -Color DarkYellow
+                $script:LinkStats.backedup--
+            }
+        }
+        $hint = if ($restored) { 'Your original file has been restored.' }
+                elseif ($backup) { "Your original file is at $backup — restore it by hand." }
+                else { 'Nothing was overwritten.' }
+        Write-DotErr "Could not write stub $Link : $failure" $hint
+        $script:LinkStats.skipped++
+    }
+}
+
 # Library-only hook: dot-sourcing with DOTFILES_INSTALL_LIBONLY=1 exposes the
 # functions above (for the test suite) without running the bootstrap below.
 if ($env:DOTFILES_INSTALL_LIBONLY -eq '1') { return }
@@ -498,7 +581,11 @@ Write-Step 'Wiring configs'
 $wtRows = [System.Collections.Generic.List[object]]::new()
 foreach ($row in (Get-DotfilesLinkPlan -RepoRoot $RepoRoot)) {
     if ($row.ParentMustExist) { $wtRows.Add($row); continue }
-    Link-Item -Target $row.Target -Link $row.Link
+    # Kind decides HOW: a stub is a real file that includes the repo copy, because a
+    # symlink is unreadable from an ssh session (Redirection Guard — see
+    # docs/REMOTE-ACCESS.md). Everything else is linked exactly as before.
+    if ($row.Kind -eq 'Stub') { Write-StubItem -Name $row.Name -Target $row.Target -Link $row.Link }
+    else                      { Link-Item -Target $row.Target -Link $row.Link }
     if ($row.Name -eq 'PowerShell profile') {
         Write-Host "  (profile target: $($row.Link))" -ForegroundColor DarkGray
     }

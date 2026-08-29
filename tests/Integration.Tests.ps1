@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 #  tests/Integration.Tests.ps1  -  install -> uninstall round-trip on a real
 #  (temp) filesystem. The other suites unit-test pure functions; this one wires
 #  actual symlinks from the shared link plan and tears them back down, exercising
@@ -52,32 +52,48 @@ AfterAll {
 }
 
 Describe 'install -> uninstall round-trip' {
-    It 'wires every planned link as a symlink into the repo' {
+    It 'wires every planned row the way its Kind says, and both predicates agree' {
         foreach ($row in $script:Plan) {
             $parent = Split-Path -Parent $row.Link
             if ($parent -and -not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
-            New-Item -ItemType SymbolicLink -Path $row.Link -Target $row.Target -Force | Out-Null
 
-            # install's idempotency predicate must see the freshly-made link as current,
-            # and uninstall's safety predicate must recognise it as one of ours.
-            Test-SymlinkCurrent -Link $row.Link -Target $row.Target | Should -BeTrue
-            Test-LinkIntoRepo  -Link $row.Link -Root   $script:Repo | Should -BeTrue
+            if ($row.Kind -eq 'Stub') {
+                # A stub is a REAL file that includes the repo copy - a symlink here is
+                # unreadable from an ssh session (docs/REMOTE-ACCESS.md).
+                Set-Content -LiteralPath $row.Link -Value (Get-DotfilesStubContent -Name $row.Name -Target $row.Target)
+                Test-StubIntoRepo -Link $row.Link -Root $script:Repo | Should -BeTrue
+                # ...and it must NOT read as a symlink, or uninstall would try to treat it as one.
+                Test-LinkIntoRepo -Link $row.Link -Root $script:Repo | Should -BeFalse
+            } else {
+                New-Item -ItemType SymbolicLink -Path $row.Link -Target $row.Target -Force | Out-Null
+
+                # install's idempotency predicate must see the freshly-made link as current,
+                # and uninstall's safety predicate must recognise it as one of ours.
+                Test-SymlinkCurrent -Link $row.Link -Target $row.Target | Should -BeTrue
+                Test-LinkIntoRepo  -Link $row.Link -Root   $script:Repo | Should -BeTrue
+                # a symlink is never a stub
+                Test-StubIntoRepo  -Link $row.Link -Root   $script:Repo | Should -BeFalse
+            }
         }
     }
 
-    It 'leaves a real user file alone (Test-LinkIntoRepo is false for it)' {
-        $real = (Join-Path $script:HomeDir '.gitconfig')   # overwrite the link with a real file
+    It 'leaves a real user file alone (neither predicate claims it)' {
+        # .gitconfig is a Stub row, so this doubles as the check that a user's OWN
+        # config is not mistaken for our stub just because it sits at the stub's path.
+        $real = (Join-Path $script:HomeDir '.gitconfig')
         Remove-Item -LiteralPath $real -Force -ErrorAction SilentlyContinue
         'my own config' | Set-Content -LiteralPath $real
         Test-LinkIntoRepo -Link $real -Root $script:Repo | Should -BeFalse
-        # re-link it so the teardown step below has a link to remove again
-        New-Item -ItemType SymbolicLink -Path $real -Target (Join-Path $script:Repo 'git\.gitconfig') -Force | Out-Null
+        Test-StubIntoRepo -Link $real -Root $script:Repo | Should -BeFalse
+        # restore the stub so the teardown step below has something to remove again
+        Set-Content -LiteralPath $real -Value (Get-DotfilesStubContent -Name '.gitconfig' -Target (Join-Path $script:Repo 'git\.gitconfig'))
     }
 
-    It 'removes exactly the links that point into the repo' {
+    It 'removes exactly the rows that point into the repo, links and stubs alike' {
         $removed = 0
         foreach ($link in (Get-DotfilesLinkMap -HomeDir $script:HomeDir -LocalAppData $script:Local -RoamingAppData $script:Roaming -Documents $script:Docs)) {
-            if (Test-LinkIntoRepo -Link $link -Root $script:Repo) {
+            # Mirrors uninstall.ps1's guard exactly: either shape counts as ours.
+            if ((Test-LinkIntoRepo -Link $link -Root $script:Repo) -or (Test-StubIntoRepo -Link $link -Root $script:Repo)) {
                 Remove-Item -LiteralPath $link -Force -Recurse -ErrorAction SilentlyContinue
                 $removed++
             }

@@ -178,7 +178,7 @@ dotfiles-Windows/
 ├── nvim/                        symlinked to %LOCALAPPDATA%\nvim (mirrors Core)
 ├── wsl/windows.wslconfig.example  canonical host WSL2 config (mirrored net)
 ├── packages/ (scoopfile.json, winget.json, Install-Packages.ps1)
-├── docs/ (TOOLS.md, PORTING-NOTES.md, ARCHITECTURE-AUDIT.md, PACKAGE-OWNERSHIP.md)
+├── docs/ (TOOLS.md, PORTING-NOTES.md, ARCHITECTURE-AUDIT.md, PACKAGE-OWNERSHIP.md, REMOTE-ACCESS.md)
 └── CONTRIBUTING.md  SECURITY.md  .github/ (workflows, CODEOWNERS, templates)
 ```
 

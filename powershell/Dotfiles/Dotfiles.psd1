@@ -1,4 +1,4 @@
-@{
+﻿@{
     RootModule        = 'Dotfiles.psm1'
     ModuleVersion     = '0.1.0'
     GUID              = '30e4fff9-3034-48d1-a718-851d57c8f80a'
@@ -43,7 +43,14 @@
         'Test-InteractiveShell'
         'Test-InMux'
         'Get-DotfilesLinkPlan'
+        'Get-DotfilesStubContent'
+        'Test-StubIntoRepo'
         'ConvertTo-WslPath'
+        # remote access: ssh into this host and the distros behind it
+        'ConvertTo-DotSshAlias'
+        'Get-DotWslSshPlan'
+        'Format-DotWslSshConfig'
+        'Get-DotRemoteWiringResult'
         # doctor: result model, aggregation + pure logic (host probes stay in the fragment)
         'New-DoctorResult'
         'Get-DoctorSummary'
