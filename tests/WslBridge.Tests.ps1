@@ -43,13 +43,13 @@ Describe 'Select-DotHostAddress' {
         # virtual switch sorts first, and only the routing table says it is wrong.
         $script:Real = @(
             (Addr '172.26.80.1' 45)   # vEthernet (Default Switch) — no default route
-            (Addr '10.0.50.90'  17)   # Ethernet 2 — carries the default route
+            (Addr '192.168.1.50' 17)  # Ethernet 2 — carries the default route
         )
     }
 
     It 'prefers the default-route interface over a virtual switch' {
         Select-DotHostAddress -Candidate $script:Real -DefaultRouteInterface @(17) |
-            Should -Be '10.0.50.90'
+            Should -Be '192.168.1.50'
     }
     It 'honours the caller''s ranking when several interfaces have a default route' {
         Select-DotHostAddress -Candidate $script:Real -DefaultRouteInterface @(45, 17) |
@@ -57,15 +57,15 @@ Describe 'Select-DotHostAddress' {
     }
     It 'skips a routed interface that has no address of its own' {
         Select-DotHostAddress -Candidate $script:Real -DefaultRouteInterface @(99, 17) |
-            Should -Be '10.0.50.90'
+            Should -Be '192.168.1.50'
     }
     It 'falls back to the SkipAsSource order on an offline box with no default route' {
-        Select-DotHostAddress -Candidate @((Addr '10.0.50.90' 17 $true), (Addr '192.168.1.5' 12)) |
-            Should -Be '192.168.1.5'
+        Select-DotHostAddress -Candidate @((Addr '192.168.1.50' 17 $true), (Addr '10.10.0.7' 12)) |
+            Should -Be '10.10.0.7'
     }
     It 'never returns a link-local address' {
-        Select-DotHostAddress -Candidate @((Addr '169.254.7.7' 3), (Addr '10.0.50.90' 17)) |
-            Should -Be '10.0.50.90'
+        Select-DotHostAddress -Candidate @((Addr '169.254.7.7' 3), (Addr '192.168.1.50' 17)) |
+            Should -Be '192.168.1.50'
         Select-DotHostAddress -Candidate @((Addr '169.254.7.7' 3)) | Should -BeNullOrEmpty
     }
     It 'returns nothing when there is nothing to pick' {
