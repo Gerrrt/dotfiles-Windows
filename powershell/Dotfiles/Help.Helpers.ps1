@@ -75,6 +75,12 @@ function Get-DotfilesHelpData {
         @{ Command = 'kali'; Desc = 'jump into the Kali WSL distro' }
         @{ Command = 'cdwsl [distro]'; Desc = 'enter WSL at the current directory' }
         @{ Command = 'wsls / hostip'; Desc = 'distro status / host LAN IP' }
+        @{ Command = 'wslup'; Desc = 'start sshd in each distro so they stay reachable' }
+    )
+    $g['Remote access'] = @(
+        @{ Command = 'remote-doctor'; Desc = 'what an ssh session into this host would get' }
+        @{ Command = 'remote-setup'; Desc = 'fix the host side: sshd, shell, firewall, boot task' }
+        @{ Command = 'wsl-ssh-config'; Desc = 'ssh_config blocks for the distros (ports assigned)' }
     )
     $g['psmux (multiplexer)'] = @(
         @{ Command = 'mux [session]'; Desc = 'attach-or-create a psmux session' }

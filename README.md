@@ -164,8 +164,9 @@ dotfiles-Windows/
 │   ├── core/                    aliases, shared lib, tool inits, functions, completions, help
 │   │     00-aliases  05-lib  08-git-safety  10-tools  15-update  20-functions  25-television
 │   │     40-op  45-crypto  50-completions  55-help  57-health-nudge
-│   ├── os/                      windows helpers + wsl bridge + psmux + maint + doctor
-│   │     30-windows  31-wsl-bridge  32-psmux  33-psmux-pill  40-maint  45-doctor  48-core
+│   ├── os/                      windows helpers + wsl bridge + psmux + remote + maint + doctor
+│   │     30-windows  31-wsl-bridge  32-psmux  33-psmux-pill  34-remote  40-maint  45-doctor
+│   │     48-core
 │   └── local.ps1.example        copy to local.ps1 (gitignored)
 ├── maint/Maintenance.ps1        unattended daily maint runner (Task Scheduler)
 ├── windows-terminal/settings.json
@@ -176,9 +177,11 @@ dotfiles-Windows/
 │       psmux.reset.conf  scripts/   (keybinds split out + popup helper scripts)
 ├── desktop/                     opt-in tiling desktop (GlazeWM + Zebar), symlinked to ~/.glzr
 ├── nvim/                        symlinked to %LOCALAPPDATA%\nvim (mirrors Core)
+├── windows/                     host scripts: defaults.ps1, Enable-RemoteAccess.ps1
 ├── wsl/windows.wslconfig.example  canonical host WSL2 config (mirrored net)
 ├── packages/ (scoopfile.json, winget.json, Install-Packages.ps1)
-├── docs/ (TOOLS.md, PORTING-NOTES.md, ARCHITECTURE-AUDIT.md, PACKAGE-OWNERSHIP.md)
+├── docs/ (TOOLS.md, PORTING-NOTES.md, ARCHITECTURE-AUDIT.md, PACKAGE-OWNERSHIP.md,
+│         REMOTE-ACCESS.md)
 └── CONTRIBUTING.md  SECURITY.md  .github/ (workflows, CODEOWNERS, templates)
 ```
 

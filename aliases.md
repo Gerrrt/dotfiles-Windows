@@ -221,6 +221,22 @@ Each function is only defined if its backing tool (`age` / `croc`) is installed 
 | `hostip` | Windows host IP (as seen from WSL) |
 | `wsl-restart` | Restart the WSL subsystem |
 
+## Remote access (`34-remote.ps1`)
+
+Reaching this host *from elsewhere*, and keeping the distros reachable once the
+Windows sshd owns port 22. The diagnosis behind each of these is in
+[`docs/REMOTE-ACCESS.md`](docs/REMOTE-ACCESS.md).
+
+| Function | Purpose |
+|----------|----------|
+| `remote-doctor` | What an ssh session into this host would actually get: sshd service + startup type, login shell, `authorized_keys` location, firewall, profile trust, `.wslconfig`, boot task, sleep, per-distro ports (read-only) |
+| `remote-doctor -ProbeDistros` | Also enters each distro to read its `sshd_config` port — this **starts** the distro |
+| `remote-setup` | Applies the host-side fixes (elevates): sshd automatic + running, `DefaultShell` → pwsh, firewall rule, `administrators_authorized_keys` with the ACL sshd demands, the WSL logon task |
+| `remote-setup -OpenDistroPorts` | Also opens a LAN firewall rule per distro (prefer `ProxyJump` through port 22 instead) |
+| `remote-setup -DisableSleepOnAC` | Stops the host sleeping on AC — a sleeping box answers no ssh |
+| `wsl-ssh-config [-JumpHost h]` | Prints the client-side `ssh_config` blocks for every distro, with ports already assigned |
+| `wslup [-Distro …]` | Starts sshd inside each distro now (sshd is the process that keeps the distro from being torn down) |
+
 ## System (`30-windows.ps1`)
 
 | Function | Purpose |

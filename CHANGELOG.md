@@ -6,6 +6,42 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Added
+
+- **A remote-access layer: `os/34-remote.ps1`, `windows/Enable-RemoteAccess.ps1`,
+  `docs/REMOTE-ACCESS.md`.** Running OpenSSH Server on a host that also hosts the
+  WSL2 fleet breaks two things that look unrelated to sshd, and the repo had no
+  answer for either.
+
+  **The profile stops loading over ssh.** An ssh session is not the shell the setup
+  was tested in: it inherits no Process-scope execution policy (so a host that only
+  works because its terminal shortcut passes `-ExecutionPolicy Bypass` fails here and
+  nowhere else), it may resolve a different `$PROFILE` entirely, and `RemoteSigned`
+  judges a profile by ZONE — so a UNC/redirected path or a Mark-of-the-Web stream
+  refuses it however local the file feels. A fifth case isn't about trust at all:
+  with no `HKLM:\SOFTWARE\OpenSSH\DefaultShell`, an ssh login lands in `cmd.exe` and
+  no profile was ever going to load. `Get-DotProfileTrustResult` ranks those causes
+  and `remote-doctor` reports which one this box has.
+
+  **The Linux boxes stop answering.** The Windows sshd service takes `0.0.0.0:22` at
+  boot; under `networkingMode=mirrored` the distros share the host's interfaces, so a
+  distro sshd that also wants 22 never binds — and separately, WSL2 tears a distro
+  down once its last process exits, which is exactly why they were only reachable
+  while a terminal happened to be open. `Get-DotWslSshPlan` assigns each distro its
+  own port from the SORTED name list (a port that shuffles when you install or
+  unregister a distro is worse than no port: it is baked into `ssh/config`, firewall
+  rules and muscle memory), `wslup` starts the sshd that keeps each distro alive, and
+  `remote-setup` registers the logon task that does it after a reboot.
+
+  Ships `remote-doctor` / `remote-setup` / `wsl-ssh-config` / `wslup`, the
+  `Remote.Helpers.ps1` pure surface with `tests/Remote.Tests.ps1`, and `ssh/config`
+  templates for both reachability shapes. The default shape exposes ONE port (22) and
+  reaches the distros through it by `ProxyJump`; `-OpenDistroPorts` is opt-in.
+
+  Deliberately not done here: setting the port inside a distro. That is the distro's
+  own repo's business (`dotfiles-Debian` for the Kali/Debian/Ubuntu family) — this
+  layer reports the mismatch and prints the one-liner to fix it there.
+
 ### Changed
 
 - **`auto-tag.yml`'s Core pin moved from v4.12.0 to v5.0.2** — a major and eight minors

@@ -65,6 +65,13 @@
         'Get-DotModulePrunePlan'
         # serve: bind/url plan (the serve verb + LAN-IP lookup stay in the fragment)
         'Get-DotServePlan'
+        # remote access: the sshd/WSL port plan + the ssh-trust triage (host probes
+        # stay in os/34-remote.ps1 and windows/Enable-RemoteAccess.ps1)
+        'Get-DotWslSshPlan'
+        'Format-DotWslSshConfig'
+        'Get-DotSshExecutionPolicy'
+        'Get-DotProfileTrustResult'
+        'Get-DotSshKeyFileTarget'
     )
     CmdletsToExport   = @()
     AliasesToExport   = @()

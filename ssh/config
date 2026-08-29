@@ -39,3 +39,24 @@ Host *
 #     Port 22
 #     IdentityFile ~/.ssh/id_ed25519
 
+# --- WSL distros, from this host ---------------------------------------------
+# Once OpenSSH Server is running here, the Windows sshd owns port 22 — so under
+# networkingMode=mirrored a distro sshd that also wants 22 simply never binds.
+# Each distro gets its own port instead (Port <n> in ITS /etc/ssh/sshd_config,
+# which its own repo owns), and from this host it answers on loopback.
+#
+# `wsl-ssh-config` prints these blocks filled in for the distros you actually
+# have — including the ProxyJump form for the machine you ssh FROM. See
+# docs/REMOTE-ACCESS.md.
+#
+# Host kali
+#     HostName 127.0.0.1
+#     Port 2222
+#     User youruser
+#     IdentityFile ~/.ssh/id_ed25519
+#     # A distro is reinstalled far more often than a server is rekeyed, and its
+#     # host key changes with it — while the address (127.0.0.1:2222) does not.
+#     # Keep those keys in their own file so a rebuild doesn't make you edit the
+#     # known_hosts that protects everything else.
+#     UserKnownHostsFile ~/.ssh/known_hosts.wsl
+
