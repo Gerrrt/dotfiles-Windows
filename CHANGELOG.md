@@ -6,7 +6,55 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Added
+
+- **`wsl-ssh-config` — the client-side ssh_config for the distros behind this host.**
+  `docs/REMOTE-ACCESS.md` §4 told you to hand-write the `Host <distro>` block that
+  `Format-DotWslSshConfig` could already generate: the renderer, the port allocator
+  and the alias slug all shipped as tested module exports with nothing calling them.
+  `powershell/os/34-remote.ps1` is that caller.
+
+  Ports are allocated from the **sorted** distro list, because `wsl --list` reorders
+  on install / unregister / re-default and a port that moves is worse than no port —
+  it is already baked into ssh_config, into firewall rules and into muscle memory.
+  `-HostPort` reserves the port the Windows sshd actually answers on instead of
+  assuming 22; assume otherwise and a distro is handed the host's port, a collision
+  that stays invisible until that distro silently fails to bind. `-JumpHost` emits
+  the `ProxyJump` shape — one LAN port, distro ports on the host's loopback — rather
+  than a network-facing listener per distro.
+
+  It **prints and never writes**: the file this output belongs in lives on the
+  machine you ssh *from*, which by definition is not this one.
+
+  Reading the distro list back out of `wsl.exe` is the one impure step, and it is
+  impure in a way that bites — `wsl --list --quiet` emits UTF-16LE, which lands in
+  PowerShell as a string with a NUL between every character, so a naive reader finds
+  no distros on a box that has several. `WSL_UTF8=1` is set on the **child** only
+  (and restored, including the unset case, which must be removed rather than blanked),
+  with the NUL strip as the belt for builds that ignore the variable.
+
+  Still deliberately absent, and still a runbook rather than a script: standing sshd
+  up. The service, the firewall rules, the `HKLM` DefaultShell key, the boot task and
+  the power settings are machine-global state that varies per box.
+
 ### Fixed
+
+- **`hostip` returned an address no other machine could reach.** It took the first
+  non-link-local IPv4 Windows reported, and on any box with a Hyper-V or WSL virtual
+  switch that is `vEthernet (Default Switch)` — a `Manual` 172.x address that exists
+  only inside the host. Measured here: `hostip` answered `172.26.80.1` while the LAN
+  address was `10.0.50.90`. Nothing about the address itself says which is which, so
+  it read as correct right up until the connection timed out.
+
+  What separates them is the **routing table**: the LAN interface carries a default
+  route and a virtual switch has none. `hostip` now reads the default routes and the
+  addresses and hands both to `Select-DotHostAddress`, a new pure module export that
+  makes the choice — preferring a default-route interface in the caller's metric
+  order, and falling back to the old `SkipAsSource` ordering on an offline box with
+  no default route at all, rather than returning nothing.
+
+  Surfaced by `wsl-ssh-config` above, which prints this address into a config you
+  paste on another machine — the one place the wrong answer is guaranteed to bite.
 
 - **Configs are unreadable over ssh, and it was never an execution-policy problem.**
   On a host running OpenSSH Server, the PowerShell profile failed to load in an ssh

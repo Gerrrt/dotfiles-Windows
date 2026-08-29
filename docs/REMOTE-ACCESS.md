@@ -305,6 +305,24 @@ Host kali
     ProxyJump winbox
 ```
 
+The distro half of that is generated, not hand-written. Run this **on the Windows
+host** and paste the output into the client's `~/.ssh/config`:
+
+```powershell
+wsl-ssh-config -JumpHost winbox
+```
+
+It allocates a stable port per distro from the *sorted* distro list, so the map
+does not shuffle when you install, unregister or re-default one — a port that
+moves is worse than no port, because it is already baked into ssh_config,
+firewall rules and muscle memory. It also refuses to hand out the port the
+Windows sshd itself answers on; pass `-HostPort` if that is not 22. Without
+`-JumpHost` it emits the direct shape instead, dialling this box's LAN address.
+
+It prints and never writes — the file this belongs in is on the other machine.
+The `winbox` entry stays hand-written for the same reason: it carries your key
+and account, which this repo does not know.
+
 The alternative — a LAN firewall rule per distro — is one hop less and one more
 network-facing listener per distro. Prefer the jump host for anything reachable
 from outside the house.

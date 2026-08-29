@@ -15,7 +15,7 @@
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
 # provides: kali, wsls, wslip, cdwsl, hostip, wslhome, wsl-restart
-# requires: ConvertTo-WslPath, Test-Cmd, Write-DotHost
+# requires: ConvertTo-WslPath, Select-DotHostAddress, Test-Cmd, Write-DotHost
 
 if (-not (Test-Cmd wsl)) { return }
 
@@ -43,11 +43,19 @@ function cdwsl {
 # With networkingMode=mirrored, the host and WSL share interfaces, so the
 # host's LAN IP is the address other machines use to reach a service running
 # in WSL. This surfaces it fast.
+#
+# The two OS reads live here; the CHOICE is Select-DotHostAddress in the module,
+# because picking right is not obvious: a box with a Hyper-V or WSL virtual
+# switch also reports a Manual 172.x address on `vEthernet (Default Switch)`
+# that no other machine can reach, and taking the first address hands you that
+# one. The default route is what tells them apart - see the helper.
 function hostip {
-    (Get-NetIPAddress -AddressFamily IPv4 |
-        Where-Object { $_.PrefixOrigin -in 'Dhcp','Manual' -and $_.IPAddress -notlike '169.254.*' } |
-        Sort-Object SkipAsSource |
-        Select-Object -First 1 -ExpandProperty IPAddress)
+    $routes = @(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |
+        Sort-Object RouteMetric, InterfaceMetric |
+        Select-Object -ExpandProperty InterfaceIndex)
+    $addrs = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.PrefixOrigin -in 'Dhcp','Manual' })
+    Select-DotHostAddress -Candidate $addrs -DefaultRouteInterface $routes
 }
 
 # --- open the current Windows folder inside WSL's $HOME quickly ---------------
