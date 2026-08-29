@@ -23,7 +23,7 @@
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
 # provides: Get-RemoteRunnerPath, Get-WslDistroNames, remote-doctor, remote-setup, wsl-ssh-config, wslup
-# requires: Format-DotWslSshConfig, Get-DotWslSshPlan, Test-Cmd, Write-DotErr, Write-DotHost, Write-DotOk, hostip
+# requires: Format-DotWslSshConfig, Get-DotWslSshPlan, Test-Cmd, Write-DotErr, Write-DotHost, hostip
 
 $script:RemoteRunner = if ($global:DOTFILES) { Join-Path $global:DOTFILES 'windows\Enable-RemoteAccess.ps1' } else { $null }
 
@@ -113,15 +113,12 @@ function wsl-ssh-config {
 # you happen to have a terminal open on the host: nothing is running, so nothing
 # is listening. This starts each distro's ssh service now; `remote-setup` makes
 # it survive a reboot (a logon task plus vmIdleTimeout=-1 in .wslconfig).
+#
+# Delegated rather than reimplemented: the logon task runs the SAME code path
+# (`-StartDistros`), so the thing that happens at boot is the thing you can run
+# and watch by hand — a second copy here would drift from it silently.
 function wslup {
-    param([string[]]$Distro)
-    if (-not (Test-Cmd wsl)) { Write-DotErr 'wsl not found on this host'; return }
-    $names = if ($Distro) { $Distro } else { Get-WslDistroNames }
-    foreach ($n in $names) {
-        # `service ssh start` covers both init flavours: it is present with or
-        # without systemd, and is a no-op when the daemon is already up.
-        & wsl.exe -d $n -u root -- /usr/sbin/service ssh start 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { Write-DotOk "$n : sshd started" }
-        else { Write-DotErr "$n : could not start sshd" 'install it in the distro: sudo apt install openssh-server' }
-    }
+    $runner = Get-RemoteRunnerPath
+    if (-not $runner) { return }
+    & $runner -StartDistros
 }

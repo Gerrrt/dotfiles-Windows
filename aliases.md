@@ -235,7 +235,7 @@ Windows sshd owns port 22. The diagnosis behind each of these is in
 | `remote-setup -OpenDistroPorts` | Also opens a LAN firewall rule per distro (prefer `ProxyJump` through port 22 instead) |
 | `remote-setup -DisableSleepOnAC` | Stops the host sleeping on AC — a sleeping box answers no ssh |
 | `wsl-ssh-config [-JumpHost h]` | Prints the client-side `ssh_config` blocks for every distro, with ports already assigned |
-| `wslup [-Distro …]` | Starts sshd inside each distro now (sshd is the process that keeps the distro from being torn down) |
+| `wslup` | Starts sshd inside each distro now (sshd is the process that keeps the distro from being torn down). Same code path the logon task runs |
 
 ## System (`30-windows.ps1`)
 
