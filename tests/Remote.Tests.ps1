@@ -1,20 +1,35 @@
 # ============================================================================
-#  tests/Remote.Tests.ps1  -  pure remote-access logic (Remote.Helpers.ps1).
+#  tests/Remote.Tests.ps1  -  remote-access logic: the pure helpers
+#  (Remote.Helpers.ps1) and the thin fragment that calls them (os/34-remote.ps1).
 #
 #  The host side - the sshd service, the registry, the firewall, the scheduled
 #  task - is deliberately not exercised, and deliberately not in this repo: it is
 #  machine-global state that varies per box. See docs/REMOTE-ACCESS.md.
 #
 #  What IS exercised is the part that decides whether you can reach anything: the
-#  distro port map, the ssh_config it renders, and the triage that says whether a
-#  wired config will survive an ssh session under Redirection Guard.
+#  distro port map, the ssh_config it renders, the triage that says whether a
+#  wired config will survive an ssh session under Redirection Guard, and the one
+#  impure step in front of them - reading the distro list back out of wsl.exe.
 # ============================================================================
 
 BeforeAll {
     $RepoRoot = Split-Path -Parent $PSScriptRoot
     $script:Module = Import-Module (Join-Path $RepoRoot 'powershell/Dotfiles/Dotfiles.psd1') -Force -DisableNameChecking -PassThru
+
+    # Test-Cmd is a load-time FRAGMENT function (core/00-aliases.ps1), not a module
+    # export, so it is absent in this unit context. Stub it GLOBALLY (the fragment
+    # under test resolves it up the scope chain) and let each It decide the answer.
+    $global:DotRemoteHasWsl = $true
+    function global:Test-Cmd { param([string]$Name) [bool]$global:DotRemoteHasWsl }
+
+    . (Join-Path $RepoRoot 'powershell/os/34-remote.ps1')
 }
-AfterAll { if ($script:Module) { Remove-Module $script:Module -Force -ErrorAction SilentlyContinue } }
+AfterAll {
+    Remove-Item function:Get-WslDistroNames, function:wsl-ssh-config -ErrorAction SilentlyContinue
+    Remove-Item function:global:Test-Cmd, function:global:wsl.exe -ErrorAction SilentlyContinue
+    Remove-Variable -Name DotRemoteHasWsl, DotRemoteChildUtf8 -Scope Global -ErrorAction SilentlyContinue
+    if ($script:Module) { Remove-Module $script:Module -Force -ErrorAction SilentlyContinue }
+}
 
 Describe 'ConvertTo-DotSshAlias' {
     It 'slugs a distro name into something typeable' {
@@ -129,5 +144,123 @@ Describe 'Get-DotRemoteWiringResult' {
         $r.PSObject.Properties.Name | Should -Contain 'Status'
         $r.PSObject.Properties.Name | Should -Contain 'Detail'
         $r.Name | Should -Be 'remote: x'
+    }
+}
+
+# --- the fragment: os/34-remote.ps1 -------------------------------------------
+# The one impure step in the remote story is reading the distro list back out of
+# wsl.exe, and it is impure in a way that has bitten before: the listing arrives
+# UTF-16LE, so a naive reader "sees" no distros on a box that has several.
+Describe 'Get-WslDistroNames' {
+    BeforeEach {
+        $global:DotRemoteHasWsl    = $true
+        $global:DotRemoteWslOut    = @()
+        $global:DotRemoteChildUtf8 = 'never-called'
+        # PowerShell resolves a Function before an Application, so this shadows the
+        # real wsl.exe for the fragment's `& wsl.exe` without touching PATH.
+        function global:wsl.exe {
+            $global:DotRemoteChildUtf8 = $env:WSL_UTF8
+            $global:DotRemoteWslOut
+        }
+    }
+
+    It 'strips the NULs a UTF-16LE listing arrives with' {
+        # What the listing looks like when the UTF-8 hint is not honoured: a NUL
+        # between every character. Without the strip these read as no distros.
+        $global:DotRemoteWslOut = @(
+            ('kali-linux'.ToCharArray()   -join "`0")
+            ('Ubuntu-24.04'.ToCharArray() -join "`0")
+        )
+        Get-WslDistroNames | Should -Be @('kali-linux', 'Ubuntu-24.04')
+    }
+    It 'asks the child for UTF-8 in the first place' {
+        $global:DotRemoteWslOut = @('kali-linux')
+        Get-WslDistroNames | Out-Null
+        $global:DotRemoteChildUtf8 | Should -Be '1'
+    }
+    It 'restores a pre-existing WSL_UTF8 instead of clobbering it' {
+        $env:WSL_UTF8 = '0'
+        try {
+            $global:DotRemoteWslOut = @('kali-linux')
+            Get-WslDistroNames | Out-Null
+            $env:WSL_UTF8 | Should -Be '0'
+        } finally { Remove-Item Env:WSL_UTF8 -ErrorAction SilentlyContinue }
+    }
+    It 'REMOVES WSL_UTF8 when it was unset before, rather than leaving it empty' {
+        # An empty-string variable is not the same as an absent one: the next
+        # caller would inherit a WSL_UTF8 that was never there.
+        Remove-Item Env:WSL_UTF8 -ErrorAction SilentlyContinue
+        $global:DotRemoteWslOut = @('kali-linux')
+        Get-WslDistroNames | Out-Null
+        (Test-Path Env:WSL_UTF8) | Should -BeFalse
+    }
+    It 'drops the blank and whitespace-only lines wsl pads the listing with' {
+        $global:DotRemoteWslOut = @('kali-linux', '', '   ', 'Debian')
+        Get-WslDistroNames | Should -Be @('kali-linux', 'Debian')
+    }
+    It 'yields nothing on a host with no wsl, without shelling out' {
+        $global:DotRemoteHasWsl = $false
+        @(Get-WslDistroNames).Count | Should -Be 0
+        $global:DotRemoteChildUtf8  | Should -Be 'never-called'
+    }
+}
+
+Describe 'wsl-ssh-config' {
+    BeforeAll {
+        # Capture what the command PRINTS. Global stubs, recording into global
+        # lists, for the same scope reason Core.Tests.ps1 documents: a $script:
+        # var set here resolves to a different scope inside a global function.
+        $global:DotRemoteOut = [System.Collections.Generic.List[string]]::new()
+        $global:DotRemoteErr = [System.Collections.Generic.List[string]]::new()
+        function global:Write-DotHost {
+            param([Parameter(Position = 0)][string]$Text = '', [string]$Color, [switch]$NoNewline)
+            $global:DotRemoteOut.Add($Text)
+        }
+        function global:Write-DotErr {
+            param([Parameter(Mandatory)][string]$Message, [string]$Hint, [switch]$PassThru)
+            $global:DotRemoteErr.Add($Message)
+        }
+    }
+    AfterAll {
+        Remove-Item function:global:Write-DotHost, function:global:Write-DotErr -ErrorAction SilentlyContinue
+        Remove-Variable -Name DotRemoteOut, DotRemoteErr -Scope Global -ErrorAction SilentlyContinue
+    }
+    BeforeEach {
+        $global:DotRemoteOut.Clear(); $global:DotRemoteErr.Clear()
+        $global:DotRemoteHasWsl = $true
+        $global:DotRemoteWslOut = @('kali-linux', 'Debian')
+        function global:wsl.exe { $global:DotRemoteWslOut }
+    }
+
+    It 'renders a Host block per installed distro' {
+        wsl-ssh-config
+        $text = $global:DotRemoteOut -join "`n"
+        $text | Should -Match '(?m)^Host kali-linux$'
+        $text | Should -Match '(?m)^Host debian$'
+    }
+    It 'routes through the jump host rather than exposing a port per distro' {
+        wsl-ssh-config -JumpHost winbox
+        $text = $global:DotRemoteOut -join "`n"
+        $text | Should -Match 'ProxyJump winbox'
+        $text | Should -Match 'HostName 127\.0\.0\.1'
+    }
+    It 'keeps the Windows sshd off the distro map even when it moved off 22' {
+        # The reason Get-DotWslSshPlan takes -HostPort at all: a host that moved
+        # sshd to 2222 would otherwise be handed 2222 as a distro port, and the
+        # collision is invisible until the distro silently fails to bind.
+        wsl-ssh-config -BasePort 2222 -HostPort 2222
+        ($global:DotRemoteOut -join "`n") | Should -Not -Match '(?m)^\s+Port 2222$'
+    }
+    It 'falls back to a placeholder host when hostip is unavailable' {
+        # hostip lives in 31-wsl-bridge, which returns early on a host with no wsl.
+        # A degraded load must print a placeholder, not throw.
+        wsl-ssh-config
+        ($global:DotRemoteOut -join "`n") | Should -Match 'HostName <host-ip>'
+    }
+    It 'reports and returns when there are no distros, instead of throwing' {
+        $global:DotRemoteHasWsl = $false
+        { wsl-ssh-config } | Should -Not -Throw
+        $global:DotRemoteErr | Should -Contain 'no WSL distros found'
+        ($global:DotRemoteOut -join "`n") | Should -Not -Match 'Host '
     }
 }

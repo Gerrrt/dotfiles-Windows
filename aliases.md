@@ -218,8 +218,14 @@ Each function is only defined if its backing tool (`age` / `croc`) is installed 
 | `wslip` | WSL distro IP address |
 | `cdwsl [distro]` | Open WSL distro at current Windows directory (translated to WSL path; falls back to distro default) |
 | `wslhome` | Open WSL distro at its home directory (`~`) |
-| `hostip` | Windows host IP (as seen from WSL) |
+| `hostip` | Windows host LAN IPv4 — the address another machine dials (the default-route interface, not a Hyper-V/WSL virtual switch) |
 | `wsl-restart` | Restart the WSL subsystem |
+
+## Remote access (`34-remote.ps1`)
+
+| Function | Purpose |
+|----------|----------|
+| `wsl-ssh-config` | Print the `ssh_config` block for every WSL distro, for pasting on the machine you ssh *from* (`-JumpHost` routes through this host instead of opening a LAN port per distro; `-BasePort` / `-HostPort` / `-User` tune the map). Prints only — never writes |
 
 ## System (`30-windows.ps1`)
 

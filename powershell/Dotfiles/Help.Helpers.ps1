@@ -75,6 +75,7 @@ function Get-DotfilesHelpData {
         @{ Command = 'kali'; Desc = 'jump into the Kali WSL distro' }
         @{ Command = 'cdwsl [distro]'; Desc = 'enter WSL at the current directory' }
         @{ Command = 'wsls / hostip'; Desc = 'distro status / host LAN IP' }
+        @{ Command = 'wsl-ssh-config'; Desc = 'ssh_config for every distro (paste on the client you ssh from)' }
     )
     $g['psmux (multiplexer)'] = @(
         @{ Command = 'mux [session]'; Desc = 'attach-or-create a psmux session' }

@@ -46,6 +46,7 @@
         'Get-DotfilesStubContent'
         'Test-StubIntoRepo'
         'ConvertTo-WslPath'
+        'Select-DotHostAddress'
         # remote access: ssh into this host and the distros behind it
         'ConvertTo-DotSshAlias'
         'Get-DotWslSshPlan'
