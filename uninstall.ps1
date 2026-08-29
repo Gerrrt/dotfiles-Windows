@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 #  uninstall.ps1  -  reverse install.ps1: remove the symlinks this repo created
 #  and (optionally) restore the most recent backup install.ps1 set aside.
 #
@@ -100,8 +100,12 @@ Write-Host ''
 Write-DotHost 'Removing dotfiles-Windows symlinks...' -Color Cyan
 
 foreach ($link in Get-DotfilesLinkMap) {
-    if (-not (Test-LinkIntoRepo -Link $link -Root $RepoRoot)) {
-        # Not ours (missing, real file, or links elsewhere) — never touch it.
+    # Two shapes count as ours now: a symlink into the repo, and a Kind='Stub' real
+    # file that includes the repo copy (see Get-DotfilesLinkPlan). Checking both is
+    # what stops uninstall silently orphaning the stubs install.ps1 wrote — the exact
+    # drift the shared plan exists to prevent.
+    if (-not ((Test-LinkIntoRepo -Link $link -Root $RepoRoot) -or (Test-StubIntoRepo -Link $link -Root $RepoRoot))) {
+        # Not ours (missing, a real file of the user's own, or links elsewhere) — never touch it.
         continue
     }
 

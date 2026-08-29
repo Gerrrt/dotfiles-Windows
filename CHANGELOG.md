@@ -6,7 +6,133 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Configs are unreadable over ssh, and it was never an execution-policy problem.**
+  On a host running OpenSSH Server, the PowerShell profile failed to load in an ssh
+  session with *"untrusted source"* while loading fine in Windows Terminal. The cause
+  is **Redirection Guard** (`ProcessRedirectionTrustPolicy`), which Windows enforces
+  across the whole service / session-0 lineage: a process with it enforced refuses to
+  traverse a reparse point whose target sits under a non-admin-owned directory — i.e.
+  every symlink this repo wired into a repo under `C:\Users\<you>`. The error is
+  `ERROR_UNTRUSTED_MOUNT_POINT`.
+
+  Measured, not theorised: `explorer` / `WindowsTerminal` / `glazewm` report `0x100`
+  (not enforced), while `services.exe` / `wslservice` / Task Scheduler's `svchost` /
+  `sshd` all report `0x105`. sshd inherits it, and every ssh session inherits it from
+  sshd. That split is the whole symptom.
+
+  **It cannot be configured away.** `fsutil ... R2L:1`, deleting the `sshd.exe` IFEO
+  `MitigationOptions`, setting that value to `REDIRECTION_TRUST_ALWAYS_OFF`, and
+  changing the symlink's owner were each tried on a real host and each did nothing —
+  the policy is inherited and non-relaxable. Running sshd as a real Windows service
+  would not help either (`services.exe` is `0x105` too). `docs/REMOTE-ACCESS.md`
+  records all of it so nobody re-runs the experiment.
+
+  The fix is to stop using reparse points for the configs that have to work over ssh.
+  `Get-DotfilesLinkPlan` rows now carry a **`Kind`** (`'Symlink'` | `'Stub'`), and the
+  three that matter are wired as real files that pull in the repo copy through the
+  config format's own include mechanism — same single source of truth, no reparse
+  point:
+
+  | Config | Mechanism |
+  | --- | --- |
+  | `$PROFILE` | a real `.ps1` that dot-sources `powershell/profile.ps1` |
+  | `~/.gitconfig` | `[include] path = <repo>/git/.gitconfig` |
+  | `~/.ssh/config` | `Include <repo>\ssh\config`, first line |
+
+  `~/.gitignore_global` deliberately stays a symlink — a `.gitignore` has nothing to
+  include — so the `.gitconfig` stub overrides `core.excludesfile` to the repo copy
+  instead, *after* the include, because last value wins for a single-valued key.
+
+  `~/.ssh/config` bit twice: as a symlink it also stalled the ssh **client** on the
+  host, because `ssh.exe` reads it at startup and inherits the same enforcement. A
+  plain `ssh` hung while `ssh -F NUL` returned instantly.
+
+  Re-wire an existing box with `.\install.ps1 -SkipPackages`.
+
+  Not fixed, and called out honestly in the doc: **scoop**. Its `current` junctions
+  have the same problem (77 of 78 apps unreachable over ssh on the host this was found
+  on), and there is no include trick for a junction — only taking ownership of the app
+  directories, which scoop undoes on every update.
+
+- **`.core-ref` recorded `tag = v4-19-g10ad221` — the moving major alias, not the release
+  it describes.** (#202) Every Core cut writes the specific `vX.Y.Z` and _then_ force-repoints
+  the major alias `v4` onto the same commit (`tag-release.sh`, `git tag -fa`, alias second).
+  Both tags are annotated and both sit on the release commit, so `git describe` breaks the tie
+  by **tagger time** and picks the alias. That is a provenance field naming a target that is
+  deliberately moved on the next release: the recorded string silently reinterprets itself, and
+  re-running the same command against the same commit today returns `v4.15.1-19-g10ad221`.
+  `commit` was always authoritative — only `tag` lied, and it lied in the direction that looks
+  fine until you check.
+
+  Both sync scripts now filter describe to the `vX.Y.Z` shape
+  (`--match 'v[0-9]*.[0-9]*.[0-9]*'`), which excludes bare-major aliases by construction —
+  the identical fix Core shipped for `core.lock` in dotgibson/dotfiles-core#515, so the
+  Windows row and the Unix repos' `core_tag` agree on what a release name means. When only an
+  alias exists, describe finds nothing and the `tag` line is **omitted**: an absent tag is
+  honest where `v4` was not, and the SHA stays the source of truth either way. `nvim/.core-ref`
+  is corrected in place; `starship/.core-ref` already read `v4.9.0` because its last sync was a
+  pinned `-Ref` landing exactly on a release commit — the same latent bug, just not yet visible.
+  The filter also immunizes `-CoreLocal` runs against a **locally stale** alias, since a plain
+  `git fetch` never force-updates an existing tag (this box's own Core clone has `v4` frozen at
+  v4.7.0's commit).
+
+  The describe call also moved **above** each script's `*_LIBONLY` hook as `Get-CoreDescribeTag`,
+  which is the part that keeps it fixed: the old inline call sat below the hook and was
+  structurally unreachable from Pester, which is exactly why a wrong value shipped unnoticed.
+  The new fixture (`New-DotCoreTagFixture` in `tests/_TestHelpers.ps1`) tags one commit
+  `v9.9.9` then `v9` in release order, and a companion assertion proves a bare `describe --tags`
+  still gets that fixture *wrong* — so if the reproduction ever stops reproducing, the suite says
+  so instead of going quietly green.
+  (`nvim-sync.ps1`, `starship-sync.ps1`, `nvim/.core-ref`, `tests/_TestHelpers.ps1`,
+  `tests/NvimSync.Tests.ps1`, `tests/StarshipSync.Tests.ps1`)
+
+### Added
+
+- **`Get-DotfilesStubContent`** and **`Test-StubIntoRepo`** (`powershell/core/05-lib.ps1`,
+  exported from the `Dotfiles` module) — the stub body renderer and the "is this wired?"
+  predicate for `Kind='Stub'` rows. `Test-StubIntoRepo` is a *reference* check, not an
+  equality check, so a user's own added lines survive a re-install; it compares with
+  forward slashes and uses `String.Contains` rather than `-like`, because it gates a
+  delete in `uninstall.ps1` and a `[` read as a wildcard would be a false positive.
+- **`powershell/Dotfiles/Remote.Helpers.ps1`** (+ `tests/Remote.Tests.ps1`) — pure logic
+  for reaching this host and the distros behind it: `Get-DotWslSshPlan` (a stable
+  distro->port map, sorted by name so a port never moves when you install or unregister
+  a distro), `Format-DotWslSshConfig` (the client-side ssh_config, direct or via
+  `ProxyJump`), `ConvertTo-DotSshAlias`, and `Get-DotRemoteWiringResult` — the triage
+  that says whether a wired config survives an ssh session.
+
+  `Get-DotWslSshPlan` takes the Windows sshd's port as a **parameter** rather than
+  assuming 22. A host that moved sshd off 22 is common, and assuming otherwise produces
+  a confident "port collision" diagnosis that is simply wrong.
+
+  Deliberately absent: anything that touches the service, registry, firewall, scheduled
+  tasks, or power settings. That is machine-global state which varies per box and is
+  better done by hand with eyes on it — the runbook is in `docs/REMOTE-ACCESS.md`.
+- **A `Remote (ssh) configs` row in `dotfiles-doctor`** — probes whether Redirection
+  Guard is enforced in the current session and reports any stub-kind config still wired
+  as a symlink. Only the actionable rows are listed: plain symlinks are also unreadable
+  over ssh under enforcement, but that has no fix at this layer, and listing all eleven
+  every run would bury the one you can do something about.
+- **`docs/REMOTE-ACCESS.md`** — the full diagnosis, the one-command way to confirm
+  Redirection Guard in a broken session, the list of fixes that do *not* work, the
+  scoop limitation, and a corrected WSL section (banner-grabbing to identify which
+  daemon is on which port; `who` rather than `ss` for per-distro attribution, since
+  `networkingMode=mirrored` makes `ss` show the host's whole peer list).
+
 ### Changed
+
+- **`install.ps1`** grows `Write-StubItem`, dispatching on the plan row's `Kind`. It
+  mirrors `Link-Item`'s contract deliberately — idempotent skip, back up before
+  overwrite, honour `-DryRun`, same stats — and the install summary gains a `stubbed`
+  line (emitted only when the caller tracks it, so an older stats bag renders unchanged).
+- **`uninstall.ps1`** now treats *either* shape as ours (symlink into the repo, or a
+  stub that references it), so it can no longer orphan the files `install.ps1` wrote.
+- **`dotfiles-doctor`** is `Kind`-aware: a stub row reports `stub -> repo`, and a
+  stub-kind row still wired as a symlink is flagged *"will not resolve over ssh"* with
+  the re-install fix. A symlinked profile is a warn, not a fail — nothing is broken
+  until you ssh in.
 
 - **`auto-tag.yml`'s Core pin moved from v4.12.0 to v5.0.2** — a major and eight minors
   in one step, because nothing advances it automatically. This repo vendors no `core/`,
@@ -48,40 +174,6 @@ so entries are grouped by theme rather than strict semver releases.
   like node was: the lock-drift gate only accepts ids `Update-PackageLock.ps1` can
   resolve to an installed version, so declaring `RubyWithDevKit.4.0` on a box running
   plain `Ruby.4.0` would sit permanently unlockable and red. (`docs/PACKAGE-OWNERSHIP.md`)
-
-### Fixed
-
-- **`.core-ref` recorded `tag = v4-19-g10ad221` — the moving major alias, not the release
-  it describes.** (#202) Every Core cut writes the specific `vX.Y.Z` and _then_ force-repoints
-  the major alias `v4` onto the same commit (`tag-release.sh`, `git tag -fa`, alias second).
-  Both tags are annotated and both sit on the release commit, so `git describe` breaks the tie
-  by **tagger time** and picks the alias. That is a provenance field naming a target that is
-  deliberately moved on the next release: the recorded string silently reinterprets itself, and
-  re-running the same command against the same commit today returns `v4.15.1-19-g10ad221`.
-  `commit` was always authoritative — only `tag` lied, and it lied in the direction that looks
-  fine until you check.
-
-  Both sync scripts now filter describe to the `vX.Y.Z` shape
-  (`--match 'v[0-9]*.[0-9]*.[0-9]*'`), which excludes bare-major aliases by construction —
-  the identical fix Core shipped for `core.lock` in dotgibson/dotfiles-core#515, so the
-  Windows row and the Unix repos' `core_tag` agree on what a release name means. When only an
-  alias exists, describe finds nothing and the `tag` line is **omitted**: an absent tag is
-  honest where `v4` was not, and the SHA stays the source of truth either way. `nvim/.core-ref`
-  is corrected in place; `starship/.core-ref` already read `v4.9.0` because its last sync was a
-  pinned `-Ref` landing exactly on a release commit — the same latent bug, just not yet visible.
-  The filter also immunizes `-CoreLocal` runs against a **locally stale** alias, since a plain
-  `git fetch` never force-updates an existing tag (this box's own Core clone has `v4` frozen at
-  v4.7.0's commit).
-
-  The describe call also moved **above** each script's `*_LIBONLY` hook as `Get-CoreDescribeTag`,
-  which is the part that keeps it fixed: the old inline call sat below the hook and was
-  structurally unreachable from Pester, which is exactly why a wrong value shipped unnoticed.
-  The new fixture (`New-DotCoreTagFixture` in `tests/_TestHelpers.ps1`) tags one commit
-  `v9.9.9` then `v9` in release order, and a companion assertion proves a bare `describe --tags`
-  still gets that fixture *wrong* — so if the reproduction ever stops reproducing, the suite says
-  so instead of going quietly green.
-  (`nvim-sync.ps1`, `starship-sync.ps1`, `nvim/.core-ref`, `tests/_TestHelpers.ps1`,
-  `tests/NvimSync.Tests.ps1`, `tests/StarshipSync.Tests.ps1`)
 
 ## [v1.6.0] - 2026-08-05
 

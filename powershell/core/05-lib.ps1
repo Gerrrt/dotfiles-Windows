@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 #  core/05-lib.ps1  -  pure, side-effect-free helpers shared across the layers.
 #
 #  Loads right after 00-aliases (so Test-Cmd exists) and before everything that
@@ -17,7 +17,7 @@
 # ============================================================================
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
-# provides: Test-SensitiveHistoryLine, Get-DotConfirmAnswer, Test-DotGum, Read-DotConfirm, Get-DotStringSha256, Get-DotSpinnerFrame, Invoke-DotSpinner, Test-DotEmailish, Get-DotToolNudge, Test-DotNonInteractiveArg, Test-InteractiveShell, Test-InMux, Get-DotfilesLinkPlan, Test-DotColor, Test-DotUnicode, Get-DotGlyph, Write-DotHost, Write-DotBanner, Get-DotConsoleWidth, Format-DotWrap, Write-DotRule, Write-DotErr, Write-DotOk, Write-DotWarn
+# provides: Test-SensitiveHistoryLine, Get-DotConfirmAnswer, Test-DotGum, Read-DotConfirm, Get-DotStringSha256, Get-DotSpinnerFrame, Invoke-DotSpinner, Test-DotEmailish, Get-DotToolNudge, Test-DotNonInteractiveArg, Test-InteractiveShell, Test-InMux, Get-DotfilesLinkPlan, Get-DotfilesStubContent, Test-StubIntoRepo, Test-DotColor, Test-DotUnicode, Get-DotGlyph, Write-DotHost, Write-DotBanner, Get-DotConsoleWidth, Format-DotWrap, Write-DotRule, Write-DotErr, Write-DotOk, Write-DotWarn
 # requires: (none)
 
 # --- Test-SensitiveHistoryLine ------------------------------------------------
@@ -391,6 +391,21 @@ function Test-InMux {
 # Preview package — so all three are planned. Each row links only when ITS build's
 # settings dir already exists, so a box links whichever flavor(s) it has (usually
 # one, but stable + Preview can coexist) and the rest self-skip.
+#
+# Kind ('Symlink' | 'Stub') decides HOW a row is wired, and exists because a
+# symlink is unreadable from an ssh session on a host running OpenSSH Server.
+# sshd inherits Redirection Guard from the Windows service lineage, and that
+# mitigation refuses to traverse any reparse point whose target sits under a
+# non-admin-owned directory — i.e. this repo. The failure is
+# ERROR_UNTRUSTED_MOUNT_POINT, surfaced as "untrusted mount point"; it is
+# INHERITED and NON-RELAXABLE (IFEO REDIRECTION_TRUST_ALWAYS_OFF is ignored), so
+# it cannot be configured away — see docs/REMOTE-ACCESS.md.
+#
+# So the three configs that matter most over ssh are wired as REAL FILES that
+# point into the repo using the config format's own include mechanism. Same single
+# source of truth, no reparse point. Everything else stays a symlink: either it has
+# no include mechanism (.gitignore_global), or it is only ever used interactively
+# (Windows Terminal, GlazeWM, Zebar).
 function Get-DotfilesLinkPlan {
     param(
         [Parameter(Mandatory)][string]$RepoRoot,
@@ -405,13 +420,20 @@ function Get-DotfilesLinkPlan {
     if (-not $RoamingAppData) { $RoamingAppData = & $join $HomeDir 'AppData\Roaming' }
     $repo = { param($p) & $join $RepoRoot $p }
     $row  = {
-        param($Name, $Target, $Link, $ParentMustExist = $false)
-        [pscustomobject]@{ Name = $Name; Target = $Target; Link = $Link; ParentMustExist = $ParentMustExist }
+        param($Name, $Target, $Link, $ParentMustExist = $false, $Kind = 'Symlink')
+        [pscustomobject]@{ Name = $Name; Target = $Target; Link = $Link; ParentMustExist = $ParentMustExist; Kind = $Kind }
     }
     @(
-        & $row 'PowerShell profile'        (& $repo 'powershell\profile.ps1')        (& $join $Documents    'PowerShell\Microsoft.PowerShell_profile.ps1')
+        # Kind = 'Stub' rows are wired as a REAL FILE that points into the repo via the
+        # config format's own include mechanism, NOT as a symlink. See the Kind note in
+        # this function's header and Get-DotfilesStubContent below for the why.
+        & $row 'PowerShell profile'        (& $repo 'powershell\profile.ps1')        (& $join $Documents    'PowerShell\Microsoft.PowerShell_profile.ps1') $false 'Stub'
         & $row 'nvim config'               (& $repo 'nvim')                          (& $join $LocalAppData 'nvim')
-        & $row '.gitconfig'                (& $repo 'git\.gitconfig')                (& $join $HomeDir      '.gitconfig')
+        & $row '.gitconfig'                (& $repo 'git\.gitconfig')                (& $join $HomeDir      '.gitconfig') $false 'Stub'
+        # Stays a symlink on purpose: a .gitignore file has no include directive, so
+        # there is nothing to stub. The .gitconfig stub instead overrides
+        # core.excludesfile to point straight at the repo copy, which is what makes
+        # global ignores work over ssh — this row only serves interactive sessions.
         & $row '.gitignore_global'         (& $repo 'git\.gitignore_global')         (& $join $HomeDir      '.gitignore_global')
         # jj (jujutsu) — git companion; jj reads %APPDATA%\jj\config.toml on Windows.
         # Plain row (parent created on demand): linking a config for an as-yet-uninstalled
@@ -421,7 +443,7 @@ function Get-DotfilesLinkPlan {
         # Plain row like the jj/nvim ones: linking ahead of the tool is harmless, and
         # the hook in core/10-tools.ps1 no-ops when mise isn't installed.
         & $row 'mise config'               (& $repo 'mise\config.toml')              (& $join $HomeDir      '.config\mise\config.toml')
-        & $row 'ssh config'                (& $repo 'ssh\config')                    (& $join $HomeDir      '.ssh\config')
+        & $row 'ssh config'                (& $repo 'ssh\config')                    (& $join $HomeDir      '.ssh\config') $false 'Stub'
         & $row 'psmux.conf'                (& $repo 'psmux\psmux.conf')              (& $join $HomeDir      '.config\psmux\psmux.conf')
         & $row 'psmux.reset.conf'          (& $repo 'psmux\psmux.reset.conf')        (& $join $HomeDir      '.config\psmux\psmux.reset.conf')
         & $row 'psmux scripts'             (& $repo 'psmux\scripts')                 (& $join $HomeDir      '.config\psmux\scripts')
@@ -434,6 +456,107 @@ function Get-DotfilesLinkPlan {
         & $row 'GlazeWM config'            (& $repo 'desktop\glazewm\config.yaml')   (& $join $HomeDir      '.glzr\glazewm\config.yaml')
         & $row 'Zebar vanilla-clear'       (& $repo 'desktop\zebar\vanilla-clear')   (& $join $HomeDir      '.glzr\zebar\vanilla-clear')
     )
+}
+
+# --- Get-DotfilesStubContent --------------------------------------------------
+# The body of a Kind='Stub' row: a real file that pulls in the repo copy through
+# the config format's own include mechanism, so nothing has to traverse a reparse
+# point. Pure — text in, text out — so install.ps1 writes exactly what the tests
+# assert. Returns $null for a name with no stub form, which is the signal to the
+# caller that the row should be symlinked instead.
+#
+# Paths are emitted with FORWARD slashes for git (its config parser treats a
+# backslash as an escape, so C:\Users would eat the \U) and with native
+# backslashes for ssh_config and PowerShell, which both take them literally.
+function Get-DotfilesStubContent {
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Target
+    )
+    $fwd = $Target -replace '\\', '/'
+    switch ($Name) {
+        'PowerShell profile' {
+            @"
+# ~`$PROFILE — dotfiles-Windows shim (REAL FILE, deliberately not a symlink).
+# A symlinked profile is unreadable over ssh: sshd inherits Redirection Guard from
+# the Windows service lineage and refuses to traverse a reparse point into this
+# repo. Dot-sourcing a real file has no reparse point. See docs/REMOTE-ACCESS.md.
+
+`$dotfilesProfile = '$Target'
+if (Test-Path -LiteralPath `$dotfilesProfile) {
+    . `$dotfilesProfile
+} else {
+    Write-Warning "dotfiles-Windows profile not found at '`$dotfilesProfile' — re-run install.ps1."
+}
+"@
+        }
+        '.gitconfig' {
+            # excludesfile lives beside .gitconfig in the repo; the included file sets it
+            # to ~/.gitignore_global, which IS a symlink, so override it after the include.
+            # Order matters: last value wins for a single-valued key.
+            $ignore = ($fwd -replace '/\.gitconfig$', '/.gitignore_global')
+            @"
+# ~/.gitconfig — dotfiles-Windows shim (REAL FILE, deliberately not a symlink).
+# See docs/REMOTE-ACCESS.md: a symlink here is unreadable over ssh, and git fails
+# with "unable to access ... Invalid argument" rather than anything diagnostic.
+
+[include]
+	path = $fwd
+
+# The included file points excludesfile at ~/.gitignore_global, itself a symlink.
+# Override it to the repo copy so global ignores survive an ssh session. This must
+# stay AFTER the include: last value wins.
+[core]
+	excludesfile = $ignore
+"@
+        }
+        'ssh config' {
+            @"
+# ~/.ssh/config — dotfiles-Windows shim (REAL FILE, deliberately not a symlink).
+# This one bites twice: as a symlink it also stalls the ssh CLIENT on the host,
+# because ssh.exe reads this file at startup and any shell under the service
+# lineage inherits the same enforcement. See docs/REMOTE-ACCESS.md.
+#
+# Include must come FIRST: ssh_config is first-obtained-value-wins, so anything
+# above it would mask the repo's settings rather than extend them.
+
+Include $Target
+"@
+        }
+        default { $null }
+    }
+}
+
+# --- Test-StubIntoRepo --------------------------------------------------------
+# The Kind='Stub' counterpart to Test-LinkIntoRepo: true when $Link is a REAL file
+# (not a reparse point) that references $Root. Lives here, beside the plan, because
+# install.ps1, uninstall.ps1 and dotfiles-doctor all have to agree about what
+# "wired" means for a stub — the same reason the plan itself is shared.
+#
+# Deliberately a content check, not an equality check against
+# Get-DotfilesStubContent: the whole point of a stub is that it is a real file the
+# user can add their own lines to (a [user] block, an extra ssh Host). Requiring a
+# byte-for-byte match would make every local edit read as "not ours" and invite
+# uninstall to skip it or install to clobber it.
+#
+# Compares with forward slashes so C:\repo and C:/repo agree, and uses
+# String.Contains rather than -like so a '[' or ']' in the path is not read as a
+# wildcard — this gates a delete in uninstall, where a false positive removes a
+# file that was never ours.
+function Test-StubIntoRepo {
+    [OutputType([bool])]
+    param([string]$Link, [string]$Root)
+    if (-not $Root) { return $false }
+    if (-not (Test-Path -LiteralPath $Link)) { return $false }
+    $item = Get-Item -LiteralPath $Link -Force -ErrorAction SilentlyContinue
+    if (-not $item) { return $false }
+    # A symlink is emphatically NOT a stub — that is the state we are migrating away
+    # from, and install must be free to replace it.
+    if ($item.PSIsContainer -or $item.LinkType) { return $false }
+    $content = Get-Content -LiteralPath $Link -Raw -ErrorAction SilentlyContinue
+    if (-not $content) { return $false }
+    return ($content -replace '\\', '/').Contains(($Root -replace '\\', '/'))
 }
 
 # --- defensive output: NO_COLOR + non-Unicode terminals -----------------------
