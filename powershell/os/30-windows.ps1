@@ -158,8 +158,14 @@ $InMux = Test-InMux
 #   [Environment]::SetEnvironmentVariable('PSMUX_NO_AUTOLAUNCH','1','User')
 # This is the off-switch to reach for if psmux ever misbehaves on launch and you
 # need a prompt without it (you can still run `mux` by hand afterward).
+#
+# Also skip over ssh ($env:SSH_CONNECTION set — Windows OpenSSH sets it): arriving
+# over ssh you're normally already inside a multiplexer on the client, so auto-
+# attaching here just nests a mux you'd close anyway. Run `mux` by hand if you do
+# want a server-side session. Fleet-wide policy, mirrored in dotfiles-Debian's
+# os/debian.zsh tmux auto-attach.
 if ((Test-Cmd psmux) -and -not $InMux -and -not $env:PSMUX_AUTOLAUNCHED -and
-    $env:PSMUX_NO_AUTOLAUNCH -ne '1' -and
+    $env:PSMUX_NO_AUTOLAUNCH -ne '1' -and -not $env:SSH_CONNECTION -and
     (Test-InteractiveShell)) {
     $env:PSMUX_AUTOLAUNCHED = '1'
     psmux new-session -A -s Gerrrt
