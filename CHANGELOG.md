@@ -8,6 +8,43 @@ so entries are grouped by theme rather than strict semver releases.
 
 ### Added
 
+- **The scoop junction repair now covers every junction scoop makes, and runs on a
+  schedule.** #218 established the mechanism — Redirection Guard refuses a junction
+  *created* by a non-admin, trust is stamped at creation, so re-creating it elevated
+  is the only lever — and fixed `apps\<app>\current`. Two gaps remained.
+
+  **Scope.** scoop also wires persisted state back out of an app dir with junctions
+  into `scoop\persist\<app>\...` (`bat\themes`, `bat\syntaxes`, `btop-lhm\themes`,
+  `composer\cache`, `php\cli`, `syncthing\config`, the yt-dlp plugin dirs), and
+  `scoop\modules\gsudoModule` points into `apps\gsudo\current` from outside `apps\`
+  entirely — 15 further junctions on this host, created by the same non-admin scoop
+  process and untrusted for the same reason. Re-stamp only `current` and
+  `bat --list-themes` is still broken over ssh. The sweep is now every directory
+  reparse point under the scoop root; `-Recurse` does not descend *through* a reparse
+  point, so each physical junction is reported exactly once under its canonical path.
+
+  **It never actually ran.** The step is gated on elevation, and `dotfiles-maint` is
+  registered `RunLevel = Limited` — which is the open question issue #217 asked to
+  resolve first. `maint-install` now also registers `dotfiles-maint-scoop-junctions`,
+  running **as SYSTEM** an hour after the daily job. SYSTEM rather than the
+  interactive user at `RunLevel Highest`, because an Interactive task only runs while
+  someone is logged on and the case this fixes is nobody being; `-ScoopRoot` and
+  `-LogPath` are baked into the action since SYSTEM's profile paths are not the
+  user's. Sequencing is a time offset rather than an event trigger on the first task
+  completing, because `Microsoft-Windows-TaskScheduler/Operational` is disabled by
+  default and that subscription would never fire.
+
+  The daily task deliberately stays unelevated — `scoop update *` must not run as
+  admin. The sweep moved out of `Maintenance.ps1` into
+  `maint/Repair-ScoopJunctions.ps1` so the elevated task has an entry point; the
+  policy behind it is `Get-DotScoopJunctionPlan`, pure and unit-tested. Registering
+  an elevated task itself needs an elevated shell, so `maint-install` run unelevated
+  installs the daily task and says plainly that it skipped the other one.
+  `maint-status` reports both tasks with their run level; `maint-uninstall` removes
+  both.
+
+### Added
+
 - **`wsl-ssh-config` — the client-side ssh_config for the distros behind this host.**
   `docs/REMOTE-ACCESS.md` §4 told you to hand-write the `Host <distro>` block that
   `Format-DotWslSshConfig` could already generate: the renderer, the port allocator

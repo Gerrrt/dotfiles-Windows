@@ -11,7 +11,7 @@
 # ============================================================================
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
-# provides: ConvertTo-DotSshAlias, Get-DotWslSshPlan, Format-DotWslSshConfig, Get-DotRemoteWiringResult
+# provides: ConvertTo-DotSshAlias, Get-DotWslSshPlan, Format-DotWslSshConfig, Get-DotRemoteWiringResult, Get-DotScoopJunctionPlan
 # requires: New-DoctorResult
 
 # --- ConvertTo-DotSshAlias ----------------------------------------------------
@@ -167,4 +167,75 @@ function Get-DotRemoteWiringResult {
         return (New-DoctorResult $label 'warn' 'symlink — interactive only, not readable over ssh' 'see docs/REMOTE-ACCESS.md')
     }
     return (New-DoctorResult $label 'ok' 'symlink')
+}
+
+# --- Get-DotScoopJunctionPlan -------------------------------------------------
+# Which of scoop's reparse points have to be re-created from an elevated process
+# so an ssh session can traverse them.
+#
+# The mechanism is in the header of this file's sibling doc, docs/REMOTE-ACCESS.md:
+# NTFS stamps a trust level onto a junction AT CREATION from the creator's token,
+# so a junction scoop made as you is untrusted under Redirection Guard and no
+# amount of re-owning changes that. Re-creating it elevated is the only lever.
+#
+# The part worth being careful about is SCOPE. `apps\<app>\current` is the obvious
+# junction, but scoop also wires persisted state back OUT of an app dir with more
+# junctions into `scoop\persist\<app>\...` (bat\themes, btop-lhm\themes,
+# composer\cache, php\cli, syncthing\config), and `scoop\modules\gsudoModule`
+# points into `apps\gsudo\current` from outside apps\ entirely. Those were created
+# by the same non-admin scoop process and are untrusted for the same reason, so
+# fixing only `current` leaves `bat --list-themes` still broken over ssh.
+#
+# Same split as the rest of this file: the caller does the filesystem walk and the
+# elevation probe, and this decides what those reads MEAN — so the policy is unit
+# tested without a scoop install, an ssh session or an admin token.
+function Get-DotScoopJunctionPlan {
+    [OutputType([pscustomobject])]
+    param(
+        # One row per reparse point found by the caller's walk:
+        #   @{ Link = <path>; Target = <path>; LinkType = 'Junction'|'SymbolicLink'|'HardLink'|$null }
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Candidate,
+        # Re-creating as a non-admin would just re-stamp the link untrusted, so
+        # without a token there is nothing useful to do.
+        [bool]$IsElevated
+    )
+
+    $rows = [System.Collections.Generic.List[object]]::new()
+    foreach ($c in $Candidate) {
+        $linkType = [string]$c.LinkType
+        # Junctions only, matching what scoop actually creates. A HardLink is not a
+        # reparse point at all; a plain directory (scoop's own app dir) has no link
+        # to re-stamp; and a SymbolicLink is deliberately left alone — re-making one
+        # is a different operation (mklink /D) with different semantics.
+        if ($linkType -ne 'Junction') {
+            $action = 'skip-not-junction'; $reason = "not a junction (LinkType '$linkType')"
+        }
+        elseif (-not $c.Target) {
+            $action = 'skip-unresolved'; $reason = 'target could not be resolved'
+        }
+        elseif (-not $IsElevated) {
+            $action = 'blocked-not-elevated'; $reason = 'needs an elevated token to re-create as trusted'
+        }
+        else {
+            $action = 'recreate'; $reason = 'untrusted junction — re-create elevated'
+        }
+
+        $rows.Add([pscustomobject]@{
+            Link     = [string]$c.Link
+            Target   = [string]$c.Target
+            LinkType = $linkType
+            Action   = $action
+            Reason   = $reason
+        })
+    }
+
+    $count = { param($a) @($rows | Where-Object { $_.Action -eq $a }).Count }
+    return [pscustomobject]@{
+        Rows        = $rows.ToArray()
+        Total       = $rows.Count
+        ToRecreate  = (& $count 'recreate')
+        NotJunction = (& $count 'skip-not-junction')
+        Unresolved  = (& $count 'skip-unresolved')
+        Blocked     = (& $count 'blocked-not-elevated')
+    }
 }

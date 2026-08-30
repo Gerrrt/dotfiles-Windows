@@ -523,6 +523,10 @@ sync refresh; `DOTFILES_UPDATE_CHECK=0` disables it. Scoop/winget convenience ve
 - **`os/40-maint.ps1`** — the control surface (Task Scheduler is the systemd/cron analog):
   `maint-install [HH:MM]` (default 13:00; `-StartWhenAvailable`, battery-tolerant, 1 h limit),
   `maint-run` (foreground now), `maint-log [N|-f]`, `maint-status`, `maint-uninstall`.
+  Run from an **elevated** shell it also registers `dotfiles-maint-scoop-junctions`,
+  which runs as SYSTEM an hour after the daily job and re-creates scoop's junctions so
+  an ssh session can traverse them. The daily task stays unelevated on purpose —
+  `scoop update` must never run as admin. See `maint/Repair-ScoopJunctions.ps1`.
 
 ### 7.3 `packages/` — declare, install, freeze, freshness
 
