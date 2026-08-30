@@ -66,13 +66,17 @@ evening on them:
 | `fsutil behavior set SymlinkEvaluation R2L:1` | no effect. This is a different mechanism (remote/UNC paths), not Redirection Guard |
 | Deleting `MitigationOptions` from the `sshd.exe` IFEO key | no effect — the lineage default still applies |
 | Setting IFEO `MitigationOptions` to `REDIRECTION_TRUST_ALWAYS_OFF` (`0x2 << 20`) | **ignored** — the policy is inherited and non-relaxable, which is the entire point of it |
-| Changing the **symlink's** owner to `BUILTIN\Administrators` | no effect — the link's owner is not the discriminator |
+| Changing the **symlink's** owner to `BUILTIN\Administrators` | no effect — ownership is not the discriminator |
+| Changing the junction **target's** owner via `icacls /setowner` | no effect either — ownership of neither the link nor its target is checked |
 | Running sshd as a real Windows service instead of a scheduled task | would not help: `services.exe` is `0x105` too |
 
-The one thing that *is* a discriminator is the **target's** owner: a reparse
-point whose target directory is owned by `BUILTIN\Administrators` traverses fine
-even under enforcement. That is a lever for scoop (below), not for a repo you
-need to be able to edit as yourself.
+The real discriminator is **who created the reparse point**, not who owns it. NTFS
+stamps a trust level onto every junction/symlink at creation time from the creator's
+token: a link made by an administrator/SYSTEM is *trusted* and traverses under
+enforcement, one made by a standard user is *untrusted* and is refused. Ownership is
+irrelevant — which is why `icacls` in any form does nothing. The only lever is to
+**re-create the link from an elevated process**. That is a lever for scoop (below),
+not for a repo you need to be able to edit as yourself.
 
 ### What this repo does instead
 
@@ -114,21 +118,37 @@ that is still a symlink as *"will not resolve over ssh"*.
 ### What is still broken: scoop
 
 `scoop` points every app at its current version with a **junction**
-(`scoop\apps\<app>\current`), and those junctions have the same problem. On a box
-with 78 scoop apps, 77 were unreachable over ssh — no `starship`, no `mise`, no
-`jj`. The one that worked differed only in that its target version directory was
-owned by `BUILTIN\Administrators`.
+(`scoop\apps\<app>\current`), and it creates those junctions as *you* — a non-admin —
+so under enforcement every one is untrusted. On a box with 78 scoop apps, all were
+unreachable over ssh: no `starship`, no `mise`, no `jj`.
 
-There is no stub trick for a junction. The options are to leave scoop tools out
-of ssh sessions, or to take ownership of the app directories:
+Ownership is a red herring here (see the discriminator note above): `icacls
+/setowner` on the link or the target does nothing, because trust is fixed at
+**creation** from the creator's token. There is no stub trick for a junction and no
+way to relax the policy. The one thing that works is to **re-create each junction
+from an elevated process**, so the new junction is stamped admin-trusted. By hand,
+for one app (elevated) — clear scoop's ReadOnly bit first, or `rmdir` refuses it,
+then drop the link (never the target) and re-make it:
 
 ```powershell
-icacls "$env:USERPROFILE\scoop\apps\<app>\<version>" /setowner "BUILTIN\Administrators"
+$cur = "$env:USERPROFILE\scoop\apps\<app>\current"
+$item = Get-Item -LiteralPath $cur -Force
+$target = @($item.Target)[0]
+$item.Attributes = $item.Attributes -band (-bnot [System.IO.FileAttributes]::ReadOnly)
+cmd /c rmdir "$cur"
+cmd /c mklink /J "$cur" "$target"
 ```
 
-Ownership does not revoke your ACLs, so scoop keeps working — but scoop creates a
-fresh, user-owned directory on every update, so this needs re-applying (a job for
-`maint/Maintenance.ps1`, not a one-off).
+scoop re-creates `current` (untrusted again) on every upgrade, so this needs
+re-applying, not a one-off. `maint/Maintenance.ps1` does it for every app right after
+the scoop upgrade — but only when maint runs **elevated** (a non-elevated run logs a
+single `skip scoop junction re-create` line, since re-creating as a non-admin would
+just re-stamp it untrusted). An app whose files are in use — `pwsh` running the
+runner itself — fails its `rmdir` and is left alone for the next run. The daily
+`dotfiles-maint` task is registered non-elevated (so `scoop update` never runs as
+admin, which scoop discourages), so to apply it either run `maint-run` from an admin
+shell after an upgrade, or register an elevated scheduled task that invokes the
+runner.
 
 ### The things people usually blame, and how to rule them out fast
 
