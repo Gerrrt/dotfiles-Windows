@@ -285,11 +285,11 @@ maintenance job, backed by a Task Scheduler task instead of systemd/launchd/cron
 
 | Function | Purpose |
 |----------|----------|
-| `maint-install [HH:MM]` | Register + enable the daily task (default `13:00`); `StartWhenAvailable` catches up if the machine was off at that time |
+| `maint-install [HH:MM]` | Register + enable the daily task (default `13:00`); `StartWhenAvailable` catches up if the machine was off at that time. From an **elevated** shell it also registers `dotfiles-maint-scoop-junctions` (runs as SYSTEM an hour later; keeps scoop usable over ssh) |
 | `maint-run` | Run the maintenance script now, in the foreground |
 | `maint-log [N|-f]` | Show the last N log lines (default 50), or follow with `-f` |
-| `maint-status` | When it next runs / last result |
-| `maint-uninstall` | Remove the scheduled task |
+| `maint-status` | When each task next runs / last result |
+| `maint-uninstall` | Remove both scheduled tasks |
 
 ## Doctor (`45-doctor.ps1`)
 

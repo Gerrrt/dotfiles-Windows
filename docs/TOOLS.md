@@ -262,7 +262,7 @@ The fleet's "check + nudge, apply on demand" pattern (Core's `update.zsh` /
 | `up`                                                                   | apply updates: `scoop update *` + cleanup, then `winget upgrade --all`. `up -y` auto-confirms winget |
 | `update-check`                                                         | force the check now and refresh the nudge                                                            |
 | `update-host`                                                          | legacy one-shot scoop+winget update (kept; `up` is the fleet-standard verb)                          |
-| `maint-install [HH:MM]`                                                | register the daily maintenance **Scheduled Task** (default 13:00)                                    |
+| `maint-install [HH:MM]`                                                | register the daily maintenance **Scheduled Task** (default 13:00); elevated, also the scoop junction task |
 | `maint-run` / `maint-log [N\|-f]` / `maint-status` / `maint-uninstall` | run now / tail log / next-run info / remove                                                          |
 | `shell-bench [runs]`                                                   | time a cold `pwsh` start (full profile), default 5 runs — measure before tuning startup              |
 | `prof-trace`                                                           | load the full profile with tracing on and print a slowest-first per-fragment / per-tool breakdown    |

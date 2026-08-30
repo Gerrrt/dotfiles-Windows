@@ -55,7 +55,7 @@ function Get-DotfilesHelpData {
     $g['Updates & maintenance'] = @(
         @{ Command = 'up [-y] / up -n'; Desc = 'apply scoop + winget updates (-n/-Preview: list only)' }
         @{ Command = 'update-check'; Desc = 'force the "updates available" check now' }
-        @{ Command = 'maint-install [HH:MM]'; Desc = 'register the daily maint task' }
+        @{ Command = 'maint-install [HH:MM]'; Desc = 'register the daily maint task (elevated: + scoop junctions)' }
         @{ Command = 'maint-run / maint-log / maint-status'; Desc = 'run / tail / next-run' }
         @{ Command = 'shell-bench / prof-trace'; Desc = 'measure cold-start / trace load' }
         @{ Command = 'dotfiles-doctor [-Fix]'; Desc = 'health-check this setup (and auto-remediate)' }

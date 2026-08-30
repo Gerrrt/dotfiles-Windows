@@ -117,38 +117,19 @@ try {
     # NOTHING), so the only fix is to re-create the junction from an elevated process.
     # scoop remakes it (untrusted) on every upgrade, so re-do it here, after the
     # upgrade. Needs elevation — re-creating as a non-admin would just re-stamp it
-    # untrusted — so warn ONCE when unelevated. See docs/REMOTE-ACCESS.md.
+    # untrusted — so the script reports ONCE when unelevated. See docs/REMOTE-ACCESS.md.
+    #
+    # `apps\<app>\current` is not the only junction scoop makes: it also wires
+    # persisted state back out of the app dir into `scoop\persist\<app>\...`, and
+    # `scoop\modules\gsudoModule` sits outside apps\ entirely. Those are untrusted
+    # for exactly the same reason, so Repair-ScoopJunctions.ps1 walks every
+    # directory reparse point under the scoop root rather than just the app dirs.
+    #
+    # The work lives in that script, not inline here, because the daily task runs
+    # UNELEVATED (scoop must never be upgraded as admin) — so the elevated
+    # dotfiles-maint-scoop-junctions task needs the same logic as an entry point.
     if (Have scoop) {
-        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
-            [Security.Principal.WindowsBuiltInRole]::Administrator)
-        if (-not $isAdmin) {
-            Write-Log "  skip scoop junction re-create (needs elevation; run 'maint-run' from an admin shell to make ssh scoop tools work) — see docs/REMOTE-ACCESS.md"
-        } else {
-            Step 'scoop: re-create app junctions (admin-trusted)' {
-                $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
-                $apps = Join-Path $scoopRoot 'apps'
-                if (Test-Path $apps) {
-                    Get-ChildItem -LiteralPath $apps -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-                        $app  = $_.Name
-                        $cur  = Join-Path $_.FullName 'current'
-                        $item = Get-Item -LiteralPath $cur -Force -ErrorAction SilentlyContinue
-                        # a plain dir (non-symlink install) is not a reparse point and
-                        # traverses fine — only junctions need re-stamping.
-                        if (-not $item -or $item.LinkType -ne 'Junction') { return }
-                        $target = @($item.Target)[0]
-                        try {
-                            # clear scoop's ReadOnly bit (rmdir refuses it), drop the
-                            # link only (never the target), re-make it elevated so the
-                            # new junction is stamped trusted.
-                            $item.Attributes = $item.Attributes -band (-bnot [System.IO.FileAttributes]::ReadOnly)
-                            & cmd /c rmdir "$cur" 2>&1 | Out-Null
-                            if (Test-Path -LiteralPath $cur) { Write-Log "    scoop junction in use, left as-is: $app"; return }
-                            & cmd /c mklink /J "$cur" "$target" 2>&1 | Out-Null
-                        } catch { Write-Log "    scoop junction re-create failed: $app ($($_.Exception.Message))" }
-                    }
-                }
-            }
-        }
+        Step 'scoop: re-create junctions (admin-trusted)' { & (Join-Path $PSScriptRoot 'Repair-ScoopJunctions.ps1') }
     }
 
     # --- mise (runtime/tool versions) -----------------------------------------

@@ -139,16 +139,51 @@ cmd /c rmdir "$cur"
 cmd /c mklink /J "$cur" "$target"
 ```
 
-scoop re-creates `current` (untrusted again) on every upgrade, so this needs
-re-applying, not a one-off. `maint/Maintenance.ps1` does it for every app right after
-the scoop upgrade — but only when maint runs **elevated** (a non-elevated run logs a
-single `skip scoop junction re-create` line, since re-creating as a non-admin would
-just re-stamp it untrusted). An app whose files are in use — `pwsh` running the
-runner itself — fails its `rmdir` and is left alone for the next run. The daily
-`dotfiles-maint` task is registered non-elevated (so `scoop update` never runs as
-admin, which scoop discourages), so to apply it either run `maint-run` from an admin
-shell after an upgrade, or register an elevated scheduled task that invokes the
-runner.
+**`apps\<app>\current` is not the only junction that matters.** scoop also wires
+persisted state back *out* of an app dir with more junctions into
+`scoop\persist\<app>\...` — `bat\syntaxes`, `bat\themes`, `btop-lhm\themes`,
+`composer\cache`, `composer\home`, `mpv\portable_config`, `php\cli`,
+`syncthing\config`, the yt-dlp plugin dirs — and `scoop\modules\gsudoModule` is a
+junction into `apps\gsudo\current` from outside `apps\` entirely. On this host that
+is 15 further junctions, all created by the same non-admin scoop process and
+untrusted for the same reason: re-stamp only `current` and `bat --list-themes` is
+still broken over ssh. So the sweep is **every directory reparse point under the
+scoop root**, not a tour of the app dirs. (Hardlinks live in those trees too —
+`bat\current\config`, `btop-lhm\current\btop.conf` — and are *not* reparse points,
+so they are skipped. A recursive walk reports each physical junction exactly once,
+under its canonical path, because `-Recurse` does not descend *through* a reparse
+point.)
+
+scoop re-creates the junctions (untrusted again) on every upgrade, so this needs
+re-applying, not a one-off. `maint/Repair-ScoopJunctions.ps1` is the sweep;
+`maint/Maintenance.ps1` runs it right after the scoop upgrade. An app whose files
+are in use — `pwsh` running the runner itself — fails its `rmdir` and is left alone
+for the next run.
+
+It needs **elevation**, and the daily `dotfiles-maint` task is registered
+non-elevated on purpose, so that `scoop update` never runs as admin. That is why
+there are two tasks:
+
+| Task | Runs as | What it does |
+| --- | --- | --- |
+| `dotfiles-maint` | you, `RunLevel Limited` | the daily update run. Its junction step logs one `SKIPPED … not elevated` line and moves on |
+| `dotfiles-maint-scoop-junctions` | **SYSTEM**, an hour later | nothing but the junction sweep |
+
+`maint-install` registers both — but registering an elevated task itself requires an
+elevated shell, so run unelevated it installs the daily task and says plainly that it
+skipped the other one. SYSTEM rather than you-at-`RunLevel Highest` because an
+Interactive task only runs *while someone is logged on*, and the case this fixes is
+nobody being; `-ScoopRoot` and `-LogPath` are baked into the action since SYSTEM's
+profile paths are not yours. Sequencing is a time offset rather than an event
+trigger on the first task completing, because
+`Microsoft-Windows-TaskScheduler/Operational` is disabled by default and that
+subscription would never fire.
+
+Preview what a sweep would touch, without changing anything:
+
+```powershell
+pwsh -NoProfile -File maint\Repair-ScoopJunctions.ps1 -DryRun
+```
 
 ### The things people usually blame, and how to rule them out fast
 
