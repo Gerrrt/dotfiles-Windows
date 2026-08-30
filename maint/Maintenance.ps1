@@ -108,6 +108,49 @@ try {
         Step 'scoop cleanup'          { scoop cleanup *; scoop cache rm * }
     }
 
+    # --- scoop: re-create app junctions so ssh sessions can traverse them ------
+    # Under ProcessRedirectionTrustPolicy (Redirection Guard) an ssh/service-lineage
+    # process refuses to follow a junction that was CREATED by a non-admin — and scoop
+    # creates every `scoop\apps\<app>\current` junction as you, so all scoop tools
+    # (starship, mise, psmux, jj…) are unreachable over ssh. Trust is stamped at
+    # creation time from the creator's token; ownership is irrelevant (icacls does
+    # NOTHING), so the only fix is to re-create the junction from an elevated process.
+    # scoop remakes it (untrusted) on every upgrade, so re-do it here, after the
+    # upgrade. Needs elevation — re-creating as a non-admin would just re-stamp it
+    # untrusted — so warn ONCE when unelevated. See docs/REMOTE-ACCESS.md.
+    if (Have scoop) {
+        $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+            [Security.Principal.WindowsBuiltInRole]::Administrator)
+        if (-not $isAdmin) {
+            Write-Log "  skip scoop junction re-create (needs elevation; run 'maint-run' from an admin shell to make ssh scoop tools work) — see docs/REMOTE-ACCESS.md"
+        } else {
+            Step 'scoop: re-create app junctions (admin-trusted)' {
+                $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
+                $apps = Join-Path $scoopRoot 'apps'
+                if (Test-Path $apps) {
+                    Get-ChildItem -LiteralPath $apps -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                        $app  = $_.Name
+                        $cur  = Join-Path $_.FullName 'current'
+                        $item = Get-Item -LiteralPath $cur -Force -ErrorAction SilentlyContinue
+                        # a plain dir (non-symlink install) is not a reparse point and
+                        # traverses fine — only junctions need re-stamping.
+                        if (-not $item -or $item.LinkType -ne 'Junction') { return }
+                        $target = @($item.Target)[0]
+                        try {
+                            # clear scoop's ReadOnly bit (rmdir refuses it), drop the
+                            # link only (never the target), re-make it elevated so the
+                            # new junction is stamped trusted.
+                            $item.Attributes = $item.Attributes -band (-bnot [System.IO.FileAttributes]::ReadOnly)
+                            & cmd /c rmdir "$cur" 2>&1 | Out-Null
+                            if (Test-Path -LiteralPath $cur) { Write-Log "    scoop junction in use, left as-is: $app"; return }
+                            & cmd /c mklink /J "$cur" "$target" 2>&1 | Out-Null
+                        } catch { Write-Log "    scoop junction re-create failed: $app ($($_.Exception.Message))" }
+                    }
+                }
+            }
+        }
+    }
+
     # --- mise (runtime/tool versions) -----------------------------------------
     if (Have mise) {
         Step 'mise plugins update' { mise plugins update }
