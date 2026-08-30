@@ -192,9 +192,14 @@ Describe 'the two maint scheduled tasks (os/40-maint.ps1)' {
         $script:Src | Should -Match 'ExecutionTimeLimit \(New-TimeSpan -Hours 1\)'
     }
 
+    # The task list has one definition, Get-DotMaintTaskName, and both the reporting
+    # and the removal verbs iterate it — so neither can drift into handling only one
+    # of the two tasks. (45-doctor.ps1 consumes the same provider rather than
+    # hardcoding the names.)
     It 'registers, reports and removes both tasks' {
         $script:Src | Should -Match "\`$script:ScoopTaskName = 'dotfiles-maint-scoop-junctions'"
-        ([regex]::Matches($script:Src, '@\(\$script:MaintTaskName, \$script:ScoopTaskName\)')).Count | Should -Be 2
+        ([regex]::Matches($script:Src, '@\(\$script:MaintTaskName, \$script:ScoopTaskName\)')).Count | Should -Be 1
+        ([regex]::Matches($script:Src, 'foreach \(\$name in \(Get-DotMaintTaskName\)\)')).Count | Should -Be 2
     }
 
     # Registering an elevated task needs an elevated shell. That must degrade to one

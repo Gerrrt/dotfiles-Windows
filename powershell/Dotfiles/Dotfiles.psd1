@@ -74,6 +74,9 @@
         'Get-DotModulePrunePlan'
         # serve: bind/url plan (the serve verb + LAN-IP lookup stay in the fragment)
         'Get-DotServePlan'
+        # maint: which pwsh a scheduled task is registered against, and task health
+        'Get-DotStablePwshPath'
+        'Get-DotMaintTaskHealth'
     )
     CmdletsToExport   = @()
     AliasesToExport   = @()

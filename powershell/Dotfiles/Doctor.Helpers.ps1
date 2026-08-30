@@ -43,7 +43,7 @@ function Get-DoctorGroup {
     switch -Regex ($Name) {
         '^(PowerShell|Execution policy|Symlink)'                      { return 'Shell & environment' }
         '^(Repo|Profile link|link:|Modules|git identity|nvim vendor)' { return 'Repo & links' }
-        '^(Profile fragments|Core toolchain|Scoop buckets)'           { return 'Health & toolchain' }
+        '^(Profile fragments|Core toolchain|Scoop buckets|Maint tasks)' { return 'Health & toolchain' }
         default                                                       { return 'Other' }
     }
 }

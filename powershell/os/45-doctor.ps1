@@ -17,7 +17,7 @@
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
 # provides: dotfiles-doctor, Get-DotRepoRevision
-# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotRemoteWiringResult, Test-StubIntoRepo, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, Get-ScoopBucketHealthResult, Get-StarshipVendorDetail, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn
+# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotRemoteWiringResult, Test-StubIntoRepo, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, Get-ScoopBucketHealthResult, Get-StarshipVendorDetail, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn, Get-DotMaintTaskName, Get-DotMaintTaskHealth
 # NB Get-ScoopBucketFault is deliberately absent: it comes from
 # packages/Check-PackageFreshness.ps1, dot-sourced on demand via its
 # DOTFILES_PKGFRESH_LIBONLY hook, not from the module or an earlier fragment — so it
@@ -367,6 +367,54 @@ function script:Get-DoctorResults {
     } catch {
         # Never let a bucket probe take down the whole doctor run.
         $r.Add((New-DoctorResult 'Scoop buckets' 'warn' "could not check ($($_.Exception.Message))" ''))
+    }
+
+    # --- maint scheduled tasks -----------------------------------------------
+    # Does each registered task's action executable still exist, and did its last
+    # run actually launch? A task whose Execute was baked from a version-pinned path
+    # (a Store pwsh lives in …\WindowsApps\Microsoft.PowerShell_<ver>_…\pwsh.exe)
+    # starts failing with 0x80070002 the moment that package is superseded — and it
+    # fails SILENTLY, because a task that never launches writes nothing to maint.log.
+    # That takes the scoop junction sweep down with it, so the host quietly stops
+    # being reachable over ssh (docs/REMOTE-ACCESS.md).
+    #
+    # `fail`, not `warn`: this is a broken thing, not a preference. It stays out of
+    # Get-DoctorFixPlan on purpose — re-registering the SYSTEM task needs elevation,
+    # and a fix key that silently no-ops in an unelevated shell is worse than a hint.
+    try {
+        if (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue) {
+            $broken = @(); $present = 0; $unseen = 0
+            # See Get-DotMaintTaskHealth: unelevated, the SYSTEM task is invisible
+            # rather than absent, and must not be reported as missing.
+            $elevated = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+                [Security.Principal.WindowsBuiltInRole]::Administrator)
+            foreach ($name in (Get-DotMaintTaskName)) {
+                $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+                $info = if ($task) { Get-ScheduledTaskInfo -TaskName $name -ErrorAction SilentlyContinue } else { $null }
+                $exe  = if ($task -and $task.Actions.Count) {
+                    [Environment]::ExpandEnvironmentVariables([string]$task.Actions[0].Execute)
+                } else { '' }
+                $h = Get-DotMaintTaskHealth -TaskName $name -Registered ([bool]$task) `
+                        -Execute $exe -ExecuteExists ([bool]($exe -and (Test-Path -LiteralPath $exe))) `
+                        -LastResult $(if ($info) { $info.LastTaskResult } else { $null }) `
+                        -Optional ($name -ne 'dotfiles-maint') -Elevated $elevated
+                if ($task) { $present++ }
+                if ($h.Status -eq 'fail')    { $broken += "$name — $($h.Detail)" }
+                if ($h.Status -eq 'unknown') { $unseen++ }
+            }
+            $note = if ($unseen) { " ($unseen not visible unelevated)" } else { '' }
+            if ($broken.Count) {
+                $r.Add((New-DoctorResult 'Maint tasks' 'fail' ($broken -join '; ') 're-run maint-install from an elevated shell'))
+            } elseif ($present) {
+                $r.Add((New-DoctorResult 'Maint tasks' 'ok' "$present registered, executables present$note"))
+            } elseif ($unseen) {
+                $r.Add((New-DoctorResult 'Maint tasks' 'ok' "not visible from an unelevated shell$note"))
+            } else {
+                $r.Add((New-DoctorResult 'Maint tasks' 'ok' 'not installed (run maint-install)'))
+            }
+        }
+    } catch {
+        $r.Add((New-DoctorResult 'Maint tasks' 'warn' "could not check ($($_.Exception.Message))" ''))
     }
 
     return $r
