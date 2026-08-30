@@ -516,6 +516,7 @@ sync refresh; `DOTFILES_UPDATE_CHECK=0` disables it. Scoop/winget convenience ve
 - **`maint/Maintenance.ps1`** — the unattended runner (Windows port of Core's maint script). Every
   step is labelled + `try/catch` (one failure never aborts); single-instance lock; logs to
   `%LOCALAPPDATA%\dotfiles\maint\maint.log` (rotated). Steps (all user-space): scoop update/cleanup,
+  re-creating scoop's junctions admin-trusted (a no-op unless elevated — see below),
   `mise plugins update` + `mise upgrade`, headless neovim `Lazy! sync`/`TSUpdateSync`/`MasonUpdate`
   (timeout-guarded), `navi repo update`, `Save-Module` for the pinned PS modules. **winget upgrade
   is opt-in** (`MAINT_WINGET_UPGRADE=1`) since it can launch MSI installers. Knobs: `MAINT_ENABLED`,
@@ -527,6 +528,10 @@ sync refresh; `DOTFILES_UPDATE_CHECK=0` disables it. Scoop/winget convenience ve
   which runs as SYSTEM an hour after the daily job and re-creates scoop's junctions so
   an ssh session can traverse them. The daily task stays unelevated on purpose —
   `scoop update` must never run as admin. See `maint/Repair-ScoopJunctions.ps1`.
+  Both tasks are registered against a **version-stable** pwsh where one exists: a task
+  bakes an absolute path, and a Store pwsh lives in a version-pinned package dir that
+  vanishes on update, after which the task fails `0x80070002` writing nothing to the
+  log. `maint-status` shows each task's `Execute` and flags a missing one.
 
 ### 7.3 `packages/` — declare, install, freeze, freshness
 

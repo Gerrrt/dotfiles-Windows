@@ -131,6 +131,9 @@ Describe 'Get-DoctorGroup' {
     It 'groups the scoop bucket probe with health, not Other' {
         Get-DoctorGroup 'Scoop buckets' | Should -Be 'Health & toolchain'
     }
+    It 'groups the maint task probe with health, not Other' {
+        Get-DoctorGroup 'Maint tasks' | Should -Be 'Health & toolchain'
+    }
     It 'keeps Profile fragments and Core toolchain in health (not repo)' {
         Get-DoctorGroup 'Profile fragments' | Should -Be 'Health & toolchain'
         Get-DoctorGroup 'Core toolchain'    | Should -Be 'Health & toolchain'

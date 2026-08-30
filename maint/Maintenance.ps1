@@ -7,9 +7,13 @@
 #  step never aborts the rest.
 #
 #  What it touches automatically (all USER-SPACE, low-risk):
-#    • scoop:   update buckets, upgrade all apps, cleanup
+#    • scoop:   update buckets, upgrade apps, cleanup
+#    • scoop:   re-create the junctions scoop just remade, admin-trusted, so an
+#               ssh session can traverse them. No-op unless the run is elevated —
+#               it logs one SKIPPED line. See docs/REMOTE-ACCESS.md.
 #    • mise:    plugin update + upgrade   (if installed)
 #    • neovim:  Lazy! sync / TSUpdate / MasonUpdate  (headless, timeout-guarded)
+#    • navi:    cheatsheet repo update
 #    • PowerShell modules: PSReadLine / Terminal-Icons / PSFzf / CompletionPredictor
 #
 #  winget is OPT-IN: `winget upgrade --all` can launch MSI installers that prompt
@@ -32,8 +36,11 @@ if ($Help) {
         '  (normally invoked by Task Scheduler — register it with: maint-install)'
         ''
         'WHAT IT DOES (all user-space, guarded, one failure never aborts the rest):'
-        '  scoop update/upgrade/cleanup; mise update/upgrade; neovim Lazy/TS/Mason'
-        '  sync (headless, timeout-guarded); navi repo update; PowerShell modules.'
+        '  scoop: update buckets, upgrade apps, cleanup, then re-create the'
+        '  junctions scoop just remade so an ssh session can traverse them (needs'
+        '  elevation — logs one SKIPPED line otherwise; docs/REMOTE-ACCESS.md).'
+        '  Then: mise update/upgrade; neovim Lazy/TS/Mason sync (headless,'
+        '  timeout-guarded); navi repo update; PowerShell modules.'
         ''
         'ENV KNOBS'
         '  MAINT_ENABLED=1          set 0 to make the run a no-op'
@@ -131,6 +138,17 @@ try {
     if (Have scoop) {
         Step 'scoop: re-create junctions (admin-trusted)' { & (Join-Path $PSScriptRoot 'Repair-ScoopJunctions.ps1') }
     }
+
+    # NB there is deliberately no "is the elevated junction task still healthy?" step
+    # here. It cannot work: that task is registered with a SYSTEM principal, and Task
+    # Scheduler ACLs its registration to SYSTEM + BUILTIN\Administrators only — the
+    # user this run executes as has no read entry at all. So an unelevated
+    # Get-ScheduledTask returns nothing whether the task is broken, missing, or
+    # perfectly fine, and a check built on that reports a confident FAIL every single
+    # day. A run that reliably prints a false error is worse than one that says
+    # nothing. That check lives in `maint-status` and `dotfiles-doctor`, which can
+    # tell the difference — and which you run from the elevated shell you would need
+    # to fix it from anyway.
 
     # --- mise (runtime/tool versions) -----------------------------------------
     if (Have mise) {

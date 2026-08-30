@@ -115,7 +115,7 @@ Re-wire an existing box with:
 `dotfiles-doctor` reports a stub row as `stub -> repo`, and flags a stub-kind row
 that is still a symlink as *"will not resolve over ssh"*.
 
-### What is still broken: scoop
+### The one that needed a schedule: scoop
 
 `scoop` points every app at its current version with a **junction**
 (`scoop\apps\<app>\current`), and it creates those junctions as *you* — a non-admin —
@@ -178,6 +178,28 @@ profile paths are not yours. Sequencing is a time offset rather than an event
 trigger on the first task completing, because
 `Microsoft-Windows-TaskScheduler/Operational` is disabled by default and that
 subscription would never fire.
+
+**A scheduled task is only as good as the path baked into it.** Task Scheduler
+stores an absolute executable path and never re-resolves it, and a Store-installed
+pwsh lives in a *version-pinned* package directory
+(`…\WindowsApps\Microsoft.PowerShell_<ver>_…\pwsh.exe`). When Windows cleans up a
+superseded package, the task starts failing with `0x80070002` — and it fails
+**silently**, because a task that never launches writes nothing to `maint.log`. The
+junction sweep then just stops, and the host quietly goes back to being unreachable.
+
+So `maint-install` prefers a version-stable path: the MSI install
+(`%ProgramFiles%\PowerShell\7`), then the machine-wide app alias, then the per-user
+one. The daily task runs as you and can use the per-user alias; **the SYSTEM task
+cannot** — SYSTEM's `%LOCALAPPDATA%` is under `config\systemprofile` and holds no
+such alias — so with a Store-only pwsh it stays version-pinned and `maint-install`
+warns as much. Installing the MSI build (`winget install --id Microsoft.PowerShell`)
+gives both tasks a stable path.
+
+Three things now report it rather than letting it rot: `maint-status` shows each
+task's `Execute` and flags a missing one, `dotfiles-doctor` carries a **Maint tasks**
+row, and both say plainly when the SYSTEM task simply is not visible — Task Scheduler
+ACLs a SYSTEM-principal registration to SYSTEM and Administrators, so an unelevated
+shell cannot tell a broken one from a healthy one and must not pretend otherwise.
 
 Preview what a sweep would touch, without changing anything:
 

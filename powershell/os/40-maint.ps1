@@ -36,11 +36,22 @@
 #  Registering an elevated task itself needs an elevated shell, so maint-install
 #  run unelevated installs the daily task and says plainly that it skipped the
 #  other one, rather than failing the whole command.
+#
+#  WHICH pwsh a task is registered against is a real decision, not a detail, and
+#  it is why Get-PwshPath is NOT used for the task actions. Task Scheduler stores
+#  an absolute path and never re-resolves it, and `(Get-Command pwsh).Source` on a
+#  Store install resolves to the VERSION-PINNED package directory
+#  (…\WindowsApps\Microsoft.PowerShell_<ver>_…\pwsh.exe). When Windows cleans up a
+#  superseded package, both tasks start failing with 0x80070002 — and because a
+#  task that never launches writes nothing to maint.log, the daily run and the
+#  junction sweep just stop, silently. So the task actions go through
+#  Get-DotPwshPathForTask, which prefers a version-stable location; maint-run,
+#  which resolves and launches in the same breath, correctly keeps Get-PwshPath.
 # ============================================================================
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
-# provides: Get-MaintRunnerPath, Get-PwshPath, Get-MaintJunctionRepairPath, maint-install, maint-run, maint-log, maint-status, maint-uninstall
-# requires: Write-DotErr, Write-DotHost, Write-DotOk, Write-DotWarn
+# provides: Get-MaintRunnerPath, Get-PwshPath, Get-MaintJunctionRepairPath, Get-DotMaintTaskName, maint-install, maint-run, maint-log, maint-status, maint-uninstall
+# requires: Write-DotErr, Write-DotHost, Write-DotOk, Write-DotWarn, Get-DotStablePwshPath, Get-DotMaintTaskHealth
 
 $script:MaintTaskName = 'dotfiles-maint'
 $script:ScoopTaskName = 'dotfiles-maint-scoop-junctions'
@@ -74,6 +85,42 @@ function Get-PwshPath {
     return $pwshPath
 }
 
+# The task names, so 45-doctor.ps1 can check them without hardcoding them or
+# reaching into this fragment's $script: state. 40- loads before 45-.
+function Get-DotMaintTaskName { @($script:MaintTaskName, $script:ScoopTaskName) }
+
+# Probe the version-stable pwsh locations, most-stable first, and append the
+# already-resolved Get-Command answer LAST as the version-pinned fallback. Host
+# reads only — Get-DotStablePwshPath does the deciding, and is unit tested.
+function script:Get-DotPwshCandidate {
+    param([string]$Resolved)
+
+    $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
+    # UserScoped means "lives in YOUR profile": fine for the daily task, useless to
+    # the SYSTEM task, whose LOCALAPPDATA is under config\systemprofile.
+    $rows = @(
+        @{ Path = (Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe');          Kind = 'msi';           Stable = $true;  UserScoped = $false }
+        @{ Path = (Join-Path $env:windir 'System32\WindowsApps\pwsh.exe');        Kind = 'machine-alias'; Stable = $true;  UserScoped = $false }
+        @{ Path = (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\pwsh.exe'); Kind = 'user-alias';    Stable = $true;  UserScoped = $true  }
+        @{ Path = (Join-Path $scoopRoot 'shims\pwsh.exe');                        Kind = 'scoop-shim';    Stable = $true;  UserScoped = $true  }
+        @{ Path = $Resolved;                                                      Kind = 'resolved';      Stable = $false; UserScoped = $false }
+    )
+    foreach ($r in $rows) { $r.Exists = [bool]($r.Path -and (Test-Path -LiteralPath $r.Path)) }
+    $rows | ForEach-Object { [pscustomobject]$_ }
+}
+
+# The one path both task registrations go through: probe, decide, and say so when
+# the best available answer is still version-pinned.
+function script:Get-DotPwshPathForTask {
+    param([ValidateSet('User', 'System')][string]$RunAs, [string]$Resolved)
+
+    $pick = Get-DotStablePwshPath -RunAs $RunAs -Candidate @(Get-DotPwshCandidate -Resolved $Resolved)
+    if ($pick.Warning) {
+        Write-DotWarn $pick.Warning 'install the MSI build for a version-stable path: winget install --id Microsoft.PowerShell'
+    }
+    return $pick.Path
+}
+
 function maint-install {
     param([string]$When = '13:00')
 
@@ -84,9 +131,10 @@ function maint-install {
     if (-not $maintScript) { return }
     $pwshPath = Get-PwshPath
     if (-not $pwshPath) { return }
+    $taskPwsh = Get-DotPwshPathForTask -RunAs User -Resolved $pwshPath
+    if (-not $taskPwsh) { return }
 
-
-    $action  = New-ScheduledTaskAction -Execute $pwshPath `
+    $action  = New-ScheduledTaskAction -Execute $taskPwsh `
                  -Argument ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $maintScript)
     $trigger = New-ScheduledTaskTrigger -Daily -At ([datetime]$When)
     $settings = New-ScheduledTaskSettingsSet `
@@ -129,13 +177,18 @@ function script:Install-ScoopJunctionTask {
         return
     }
 
+    # After the elevation gate on purpose: an unelevated install is about to skip
+    # this task entirely, so warning about its pwsh path would be noise.
+    $taskPwsh = Get-DotPwshPathForTask -RunAs System -Resolved $pwshPath
+    if (-not $taskPwsh) { return }
+
     # An hour after the daily run, whose ExecutionTimeLimit is 1h — so the two
     # cannot overlap. It has to come after `scoop update *`, which is precisely what
     # re-creates the junctions untrusted. (An event trigger on the first task
     # completing would be tighter, but Microsoft-Windows-TaskScheduler/Operational
     # is disabled by default, so that subscription would simply never fire.)
     $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
-    $action = New-ScheduledTaskAction -Execute $pwshPath `
+    $action = New-ScheduledTaskAction -Execute $taskPwsh `
                 -Argument ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -ScoopRoot "{1}" -LogPath "{2}"' -f $scoopScript, $scoopRoot, $script:MaintLog)
     $trigger = New-ScheduledTaskTrigger -Daily -At ([datetime]$When).AddHours(1)
     $settings = New-ScheduledTaskSettingsSet `
@@ -192,34 +245,62 @@ function maint-log {
 
 function maint-status {
     $any = $false
-    foreach ($name in @($script:MaintTaskName, $script:ScoopTaskName)) {
+    # A SYSTEM-principal task is ACL'd to SYSTEM + Administrators, so an unelevated
+    # shell cannot see it at all — "not installed" would be a guess, not a finding.
+    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+    foreach ($name in (Get-DotMaintTaskName)) {
         $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+        $info = if ($task) { Get-ScheduledTaskInfo -TaskName $name -ErrorAction SilentlyContinue } else { $null }
+        # Task Scheduler stores the action verbatim, so a task registered by hand (or
+        # by an older build of this file) may hold a %VAR% form that has to be
+        # expanded before it can be checked against the disk.
+        $exe = if ($task -and $task.Actions.Count) {
+            [Environment]::ExpandEnvironmentVariables([string]$task.Actions[0].Execute)
+        } else { '' }
+
+        $health = Get-DotMaintTaskHealth -TaskName $name -Registered ([bool]$task) `
+                    -Execute $exe -ExecuteExists ([bool]($exe -and (Test-Path -LiteralPath $exe))) `
+                    -LastResult $(if ($info) { $info.LastTaskResult } else { $null }) `
+                    -Optional ($name -eq $script:ScoopTaskName) -Elevated $isAdmin
+
         if (-not $task) {
             # The scoop task is genuinely optional — it only exists if maint-install
             # was run elevated — so name the missing one and say how to get it.
             if ($name -eq $script:ScoopTaskName) {
-                Write-DotHost "$name : not installed (re-run maint-install from an elevated shell)" -Color DarkYellow
+                Write-DotHost "$name : $($health.Detail) ($($health.Hint))" -Color DarkYellow
             }
             continue
         }
         $any = $true
-        $info = Get-ScheduledTaskInfo -TaskName $name
+        # Execute is the field that was wrong the one time this mattered, and
+        # maint-status could not show it. Out-Host because the Write-Dot* renderers
+        # write immediately while formatted objects drain at the end of the
+        # pipeline — without it the verdict prints ABOVE the table it describes.
         [pscustomobject]@{
             Task        = $task.TaskName
             State       = $task.State
             RunAs       = $task.Principal.UserId
             RunLevel    = $task.Principal.RunLevel
+            Execute     = $exe
             NextRunTime = $info.NextRunTime
             LastRunTime = $info.LastRunTime
             LastResult  = ('0x{0:X}' -f $info.LastTaskResult)
-        } | Format-List
+        } | Format-List | Out-Host
+
+        switch ($health.Status) {
+            'warn'    { Write-DotWarn "$name : $($health.Detail)" $health.Hint }
+            'fail'    { Write-DotErr  "$name : $($health.Detail)" $health.Hint }
+            'unknown' { Write-DotHost "  $name : $($health.Detail)" -Color DarkGray }
+            default   { Write-DotOk   "$name : $($health.Detail)" }
+        }
     }
     if (-not $any) { Write-Host "not installed (run maint-install)" }
 }
 
 function maint-uninstall {
     $removed = @()
-    foreach ($name in @($script:MaintTaskName, $script:ScoopTaskName)) {
+    foreach ($name in (Get-DotMaintTaskName)) {
         if (-not (Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue)) { continue }
         try {
             Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction Stop

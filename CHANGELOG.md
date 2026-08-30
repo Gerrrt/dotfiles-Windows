@@ -6,7 +6,45 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The maintenance tasks were pointing at a pwsh that Windows deletes.**
+  `maint-install` baked `(Get-Command pwsh).Source` into both scheduled tasks, and a
+  Store-installed pwsh resolves to a *version-pinned* package directory
+  (`…\WindowsApps\Microsoft.PowerShell_<ver>_…\pwsh.exe`). When Windows cleans up a
+  superseded package the task fails with `0x80070002` — **silently**, because a task
+  that never launches writes nothing to `maint.log`. Measured on this host:
+  `dotfiles-maint` sat at `0x80070002` with no completed run between 2026-08-26 and
+  2026-08-29, which also meant the scoop junction sweep from #217/#221 was not
+  happening. The feature was correct and simply never got to run.
+
+  `maint-install` now prefers a version-stable path — MSI install, machine-wide app
+  alias, per-user app alias, scoop shim — and only falls back to the resolved
+  version-pinned path, warning when it does. The daily task runs as you and takes the
+  per-user alias; **the SYSTEM task cannot**, since SYSTEM's `%LOCALAPPDATA%` is under
+  `config\systemprofile`, so with a Store-only pwsh it stays pinned and says so.
+  Installing the MSI build gives both a stable path. `Get-DotStablePwshPath` is the
+  pure, unit-tested policy; the probing stays in the fragment.
+
+  Detection, so this cannot rot silently again: `maint-status` now shows each task's
+  `Execute` and attaches a verdict — a missing executable or a `0x80070002` last
+  result is a `fail`, and the informational `SCHED_S_*` codes are not. `dotfiles-doctor`
+  carries a **Maint tasks** row. Both are careful about what they can actually see:
+  Task Scheduler ACLs a SYSTEM-principal registration to SYSTEM and
+  `BUILTIN\Administrators`, so an unelevated shell cannot distinguish a broken
+  junction task from a healthy one and reports `not visible` rather than guessing
+  `not installed`. (A self-check inside the daily run was tried and removed for
+  exactly this reason: it would have reported a confident false failure every day.)
+
 ### Added
+
+- **A drift gate on the maintenance runner's own step list.** `Maintenance.ps1` states
+  its steps in three places — the file header, the `-Help` block, and the actual
+  `Step` calls — and nothing kept them honest, so both prose copies had silently lost
+  the scoop junction step (the header had also lost `navi`). `tests/Maint.Tests.ps1`
+  now discovers the steps from the AST and fails when one is not documented in both,
+  with a bidirectional map assertion so a renamed or removed step cannot leave a stale
+  entry that passes forever. Both prose blocks are corrected.
 
 - **The scoop junction repair now covers every junction scoop makes, and runs on a
   schedule.** #218 established the mechanism — Redirection Guard refuses a junction
