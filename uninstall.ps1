@@ -51,7 +51,8 @@ function Get-DotfilesLinkMap {
     # return depend solely on the injected user-dir roots, so $RepoRoot is fine.
     $plan = @(Get-DotfilesLinkPlan -RepoRoot $RepoRoot -HomeDir $HomeDir `
         -LocalAppData $LocalAppData -RoamingAppData $RoamingAppData -Documents $Documents)
-    @($plan.Link) + @($plan.LegacyLink | Where-Object { $_ })
+    $retired = @(Get-DotfilesRetiredLinkPlan -RepoRoot $RepoRoot -HomeDir $HomeDir -RoamingAppData $RoamingAppData)
+    @($plan.Link) + @($plan.LegacyLink | Where-Object { $_ }) + @($retired.Link)
 }
 
 # A legacy directory that is now EMPTY — the stub inside it has just been removed and
@@ -122,6 +123,32 @@ Write-Host ''
 Write-DotHost 'Removing dotfiles-Windows symlinks...' -Color Cyan
 
 foreach ($link in Get-DotfilesLinkMap) {
+    # A Kind='StubDir' row is a REAL directory of forwarders, so neither predicate
+    # below recognises it. Take it apart file by file instead of as a unit: remove
+    # only the forwarders that are ours and drop the directory when nothing of the
+    # user's is left. Removing it wholesale would take anything they had put there
+    # with it.
+    if ((Test-Path -LiteralPath $link -PathType Container) -and
+        -not (Get-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue).LinkType) {
+        $ours = @(Get-ChildItem -LiteralPath $link -File -ErrorAction SilentlyContinue |
+            Where-Object { Test-StubIntoRepo -Link $_.FullName -Root $RepoRoot })
+        if (-not $ours.Count) { continue }
+        if ($DryRun) {
+            Write-DotHost "  would remove  $($ours.Count) forwarder(s) in $link" -Color Cyan
+            continue
+        }
+        if (-not $Yes -and -not (Read-DotConfirm "  remove $($ours.Count) forwarder(s) in '$link'?" -DefaultYes $true)) {
+            Write-DotHost "  kept    $link" -Color DarkGray
+            $skipped++
+            continue
+        }
+        foreach ($f in $ours) { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue }
+        Write-DotHost "  removed $($ours.Count) forwarder(s) in $link" -Color Green
+        $removed++
+        if (Remove-EmptyLegacyDir -Path $link) { Write-DotHost "  removed $link  (empty)" -Color Green }
+        continue
+    }
+
     # Two shapes count as ours now: a symlink into the repo, and a Kind='Stub' real
     # file that includes the repo copy (see Get-DotfilesLinkPlan). Checking both is
     # what stops uninstall silently orphaning the stubs install.ps1 wrote — the exact
@@ -168,6 +195,38 @@ if (-not $DryRun) {
             $removed++
         }
     }
+}
+
+# The config-path env vars ARE wiring, not preference: JJ_CONFIG and
+# MISE_GLOBAL_CONFIG_FILE are how jj and mise are pointed at this repo at all, so
+# leaving them behind would leave both tools reading a checkout the user just
+# unwired. Cleared here, and only when they still point into THIS repo — a value the
+# user has since repointed elsewhere is theirs, not ours.
+#
+# DOTFILES_WIN is deliberately NOT cleared: it is how bootstrap.ps1 finds an existing
+# checkout, so removing it turns a re-install into a re-clone.
+foreach ($var in (Get-DotfilesEnvPlan -RepoRoot $RepoRoot)) {
+    if ($var.Name -eq 'DOTFILES_WIN') { continue }
+    $current = [Environment]::GetEnvironmentVariable($var.Name, 'User')
+    if (-not $current) { continue }
+    if (-not [string]::Equals($current.TrimEnd('\', '/'), $var.Value.TrimEnd('\', '/'),
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        Write-DotHost "  kept    $($var.Name) (points elsewhere: $current)" -Color DarkGray
+        $skipped++
+        continue
+    }
+    if ($DryRun) {
+        Write-DotHost "  would clear  $($var.Name) (User)" -Color Cyan
+        continue
+    }
+    if (-not $Yes -and -not (Read-DotConfirm "  clear '$($var.Name)'?" -DefaultYes $true)) {
+        Write-DotHost "  kept    $($var.Name)" -Color DarkGray
+        $skipped++
+        continue
+    }
+    [Environment]::SetEnvironmentVariable($var.Name, $null, 'User')
+    Write-DotHost "  cleared $($var.Name) (User)" -Color Green
+    $removed++
 }
 
 Write-Host ''

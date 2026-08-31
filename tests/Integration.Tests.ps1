@@ -194,6 +194,66 @@ Describe 'Write-StubItem over the legacy nvim directory symlink' {
         $script:LinkStats.skipped | Should -Be 1
     }
 
+    It 'writes one forwarder per script, retiring the directory symlink first' {
+        $src = Join-Path $script:BRepo 'psmux\scripts'
+        New-Item -ItemType Directory -Force -Path $src | Out-Null
+        foreach ($n in 'psmux-menu.ps1', 'psmux-url.ps1') { "'real $n'" | Set-Content -LiteralPath (Join-Path $src $n) }
+        $row = $script:BPlan | Where-Object Name -eq 'psmux scripts'
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $row.Link) | Out-Null
+        New-Item -ItemType SymbolicLink -Path $row.Link -Target $src | Out-Null
+
+        Write-StubDirItem -Name $row.Name -Target $row.Target -Link $row.Link
+
+        # The repo keeps exactly its two scripts - no forwarder was written INTO it
+        # through the old link, and nothing was backed up there.
+        @(Get-ChildItem -LiteralPath $src | ForEach-Object Name | Sort-Object) |
+            Should -Be @('psmux-menu.ps1', 'psmux-url.ps1')
+        (Get-Item -LiteralPath $row.Link -Force).LinkType | Should -BeNullOrEmpty
+        Test-StubDirIntoRepo -Link $row.Link -Target $row.Target -Root $script:BRepo | Should -BeTrue
+    }
+
+    It 'runs the repo script through the forwarder, arguments and all' {
+        # The point of the whole row: psmux.conf still names ~/.config/psmux/scripts,
+        # so the forwarder has to behave like the real script when invoked.
+        $src = Join-Path $script:BRepo 'psmux\scripts'
+        New-Item -ItemType Directory -Force -Path $src | Out-Null
+        'param($Who) "hello $Who from $(Split-Path -Leaf $PSScriptRoot)"' |
+            Set-Content -LiteralPath (Join-Path $src 'psmux-menu.ps1')
+        $row = $script:BPlan | Where-Object Name -eq 'psmux scripts'
+        Write-StubDirItem -Name $row.Name -Target $row.Target -Link $row.Link
+
+        $out = & (Join-Path $row.Link 'psmux-menu.ps1') -Who 'world'
+        # 'scripts' proves $PSScriptRoot resolved to the REPO copy, not ~/.config.
+        $out | Should -Be 'hello world from scripts'
+    }
+
+    It 'sweeps a forwarder whose script was deleted upstream' {
+        $src = Join-Path $script:BRepo 'psmux\scripts'
+        New-Item -ItemType Directory -Force -Path $src | Out-Null
+        foreach ($n in 'keep.ps1', 'gone.ps1') { "'x'" | Set-Content -LiteralPath (Join-Path $src $n) }
+        $row = $script:BPlan | Where-Object Name -eq 'psmux scripts'
+        Write-StubDirItem -Name $row.Name -Target $row.Target -Link $row.Link
+        Remove-Item -LiteralPath (Join-Path $src 'gone.ps1') -Force
+
+        Write-StubDirItem -Name $row.Name -Target $row.Target -Link $row.Link
+
+        Test-Path -LiteralPath (Join-Path $row.Link 'gone.ps1') | Should -BeFalse
+        Test-Path -LiteralPath (Join-Path $row.Link 'keep.ps1') | Should -BeTrue
+    }
+
+    It 'leaves a file of the user''s own in the scripts directory alone' {
+        $src = Join-Path $script:BRepo 'psmux\scripts'
+        New-Item -ItemType Directory -Force -Path $src | Out-Null
+        "'x'" | Set-Content -LiteralPath (Join-Path $src 'psmux-menu.ps1')
+        $row = $script:BPlan | Where-Object Name -eq 'psmux scripts'
+        New-Item -ItemType Directory -Force -Path $row.Link | Out-Null
+        'my own helper' | Set-Content -LiteralPath (Join-Path $row.Link 'mine.ps1')
+
+        Write-StubDirItem -Name $row.Name -Target $row.Target -Link $row.Link
+
+        Get-Content -LiteralPath (Join-Path $row.Link 'mine.ps1') -Raw | Should -Match 'my own helper'
+    }
+
     It 'never retires a stub parent the plan does not name as legacy' {
         # The guard that stops ~/.gitconfig offering to retire $HOME: the home dir
         # holds .gitignore_global, a real sibling of that row's target in the repo.

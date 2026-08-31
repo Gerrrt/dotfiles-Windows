@@ -17,7 +17,7 @@
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
 # provides: dotfiles-doctor, Get-DotRepoRevision
-# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotRemoteWiringResult, Test-StubIntoRepo, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, Get-ScoopBucketHealthResult, Get-StarshipVendorDetail, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn, Get-DotMaintTaskName, Get-DotMaintTaskHealth
+# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotfilesRetiredLinkPlan, Get-DotfilesEnvPlan, Get-DotRemoteWiringResult, Test-StubIntoRepo, Test-StubDirIntoRepo, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, Get-ScoopBucketHealthResult, Get-StarshipVendorDetail, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn, Get-DotMaintTaskName, Get-DotMaintTaskHealth
 # NB Get-ScoopBucketFault is deliberately absent: it comes from
 # packages/Check-PackageFreshness.ps1, dot-sourced on demand via its
 # DOTFILES_PKGFRESH_LIBONLY hook, not from the module or an earlier fragment — so it
@@ -265,7 +265,21 @@ function script:Get-DoctorResults {
             # Kind decides what "wired" looks like: a stub row wants a real file that
             # includes the repo, a symlink row wants a symlink. Checking the wrong one
             # would report every stub as broken (and vice versa).
-            if ($row.Kind -eq 'Stub') {
+            if ($row.Kind -eq 'StubDir') {
+                # A forwarder directory does not track the repo by itself, so "wired"
+                # here means COVERED: one forwarder per script. A script added by a
+                # Core-side or local change shows up as partial until the next install.
+                if (Test-StubDirIntoRepo -Link $row.Link -Target $row.Target -Root $global:DOTFILES) {
+                    $r.Add((New-DoctorResult "link: $($row.Name)" 'ok' 'forwarders -> repo'))
+                } elseif (Test-DotPathViaReparsePoint $row.Link) {
+                    $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'symlinked — will not resolve over ssh' 're-run install.ps1 -SkipPackages'))
+                } elseif (Test-Path $row.Link) {
+                    $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'present, missing forwarders for some scripts' 're-run install.ps1 -SkipPackages'))
+                } else {
+                    $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'missing' 'run install.ps1'))
+                }
+            }
+            elseif ($row.Kind -eq 'Stub') {
                 if (Test-StubIntoRepo -Link $row.Link -Root $global:DOTFILES) { $r.Add((New-DoctorResult "link: $($row.Name)" 'ok' 'stub -> repo')) }
                 # The reparse point can sit on an ANCESTOR (nvim: %LOCALAPPDATA%\nvim
                 # was the linked directory), in which case the row is still "symlinked"
@@ -298,6 +312,45 @@ function script:Get-DoctorResults {
                 $r.Add((New-DoctorResult 'link: Windows Terminal settings' 'ok' 'skipped (Windows Terminal not installed)'))
             }
         }
+        # Config-path env vars (Get-DotfilesEnvPlan). For jj and mise these ARE the
+        # wiring — TOML has no include directive, so there is nothing at the
+        # conventional path to look at any more. That invisibility is exactly why they
+        # get a row: an env var that quietly goes missing is indistinguishable from a
+        # tool that simply has no config.
+        foreach ($var in (Get-DotfilesEnvPlan -RepoRoot $root)) {
+            if ($var.Name -eq 'DOTFILES_WIN') { continue }   # reported by its own row above
+            $set  = [Environment]::GetEnvironmentVariable($var.Name, 'User')
+            # The registry value is the durable wiring; the PROCESS value is what the
+            # tool actually reads right now. They diverge in one common case: a shell
+            # that was already open when install.ps1 ran inherited the old environment
+            # block, so jj/mise are silently on their defaults here. Reporting only the
+            # registry would grade that 'ok' — the same false-ok the nvim row taught us
+            # to avoid — so both are checked and the session half is named separately.
+            $live = [Environment]::GetEnvironmentVariable($var.Name, 'Process')
+            if (-not $set) {
+                $r.Add((New-DoctorResult "env: $($var.Name)" 'warn' 'not set — the tool is reading its own defaults' 're-run install.ps1 -SkipPackages'))
+            } elseif (-not (Test-Path -LiteralPath $set)) {
+                $r.Add((New-DoctorResult "env: $($var.Name)" 'fail' "points at a missing file ($set)" 're-run install.ps1 -SkipPackages'))
+            } elseif (-not [string]::Equals($set.TrimEnd('\', '/'), $var.Value.TrimEnd('\', '/'), [System.StringComparison]::OrdinalIgnoreCase)) {
+                # Not a failure: pointing it at your own file is a legitimate override.
+                $r.Add((New-DoctorResult "env: $($var.Name)" 'warn' "points outside this repo ($set)"))
+            } elseif (-not $live) {
+                $r.Add((New-DoctorResult "env: $($var.Name)" 'warn' 'set for new sessions, but missing from THIS one' 'open a new shell'))
+            } else {
+                $r.Add((New-DoctorResult "env: $($var.Name)" 'ok' '-> repo'))
+            }
+        }
+
+        # Superseded links: harmless but misleading. jj/mise no longer read these, so
+        # an edit made there silently does nothing.
+        foreach ($old in (Get-DotfilesRetiredLinkPlan -RepoRoot $root)) {
+            if (Test-Path -LiteralPath $old.Link) {
+                $r.Add((New-DoctorResult "stale: $($old.Name)" 'warn' `
+                    "left over at $($old.Link); $($old.Reason) is what the tool reads now" `
+                    're-run install.ps1 -SkipPackages to retire it'))
+            }
+        }
+
         # Redirection Guard: would the wired configs survive an ssh session?
         # Only the Kind='Stub' rows are actionable here. The remaining plain symlink
         # rows (psmux, jj, mise, .gitignore_global, and the interactive-only desktop
@@ -306,7 +359,7 @@ function script:Get-DoctorResults {
         # listing them all every run would bury the rows you can act on.
         $rgEnforced = Get-DotRedirectionTrustEnforced
         if ($null -ne $rgEnforced) {
-            $stubRows = @(Get-DotfilesLinkPlan -RepoRoot $root | Where-Object Kind -eq 'Stub')
+            $stubRows = @(Get-DotfilesLinkPlan -RepoRoot $root | Where-Object { $_.Kind -in 'Stub', 'StubDir' })
             $bad = @()
             foreach ($row in $stubRows) {
                 $item = Get-Item -LiteralPath $row.Link -Force -ErrorAction SilentlyContinue

@@ -92,10 +92,57 @@ point. This is `Kind = 'Stub'` in `Get-DotfilesLinkPlan`
 | `%LOCALAPPDATA%\nvim\init.lua` | a real `init.lua` that prepends `<repo>/nvim` to `runtimepath` and `dofile()`s it |
 | `~/.gitconfig` | `[include] path = <repo>/git/.gitconfig` |
 | `~/.ssh/config` | `Include <repo>\ssh\config`, on the first line |
+| `~/.config/psmux/psmux.conf` | `source-file <repo>\psmux\psmux.conf` — psmux's syntax is tmux-compatible |
+| `~/.config/psmux/psmux.reset.conf` | same; this is what the repo conf's own `source-file` line then resolves to |
 
-Everything else stays a symlink, either because the format has no include
-directive (`.gitignore_global`) or because it is only ever used interactively
-(Windows Terminal, GlazeWM, Zebar).
+### When there is no include directive at all
+
+Two more shapes have no include mechanism to reach for, and each gets its own answer
+rather than being written off.
+
+**A directory of scripts** — `~/.config/psmux/scripts`, eight pwsh popup helpers.
+`Kind = 'StubDir'`: a real directory of one-line **forwarders**, one per script, each
+`& '<repo>\psmux\scripts\<name>.ps1' @args`. psmux.conf's eight `display-popup` binds
+are untouched — they still name `~/.config/psmux/scripts`, which is simply real now.
+`&` rather than dot-sourcing keeps `$PSScriptRoot` on the repo copy.
+
+The cost is that a forwarder directory does **not** track the repo by itself, and
+drift runs both ways: a script added upstream has no forwarder, and one deleted
+upstream leaves a forwarder pointing at nothing. `Test-StubDirIntoRepo` fails on both,
+so install repairs it and `dotfiles-doctor` reports it. Checking only the first
+direction is a trap — the stale forwarder is not *missing*, so install says "already
+wired" and its own sweep never runs.
+
+**TOML** — `jj` and `mise`. TOML has no include directive, so there is nothing to
+stub, and a symlink is unreadable. Both tools take a path from the environment
+instead, so `Get-DotfilesEnvPlan` sets these as persistent **User**-scope variables
+and neither config is wired as a file at all:
+
+| Variable | What it does |
+| --- | --- |
+| `JJ_CONFIG` | a TOML file or a directory of them; when set it *replaces* the default user-config location (`jj help -k config`) |
+| `MISE_GLOBAL_CONFIG_FILE` | mise's global config path |
+
+Measured on this host before the change: `jj config get ui.default-command` answered
+*"Value not found"*, and `mise config ls` outside a project listed nothing — both were
+silently running on defaults, not erroring.
+
+User scope, because that is what reaches every process: an ssh session gets the user's
+environment from the registry, as does a scheduled task. Same mechanism `DOTFILES_WIN`
+already relies on. The catch is that a shell **already open** when `install.ps1` ran
+keeps the old environment block, so `dotfiles-doctor` checks the process value as well
+as the registry and says *"set for new sessions, but missing from THIS one"* rather
+than grading it `ok`.
+
+The honest cost of the env-var approach: nothing exists at
+`~/.config/mise/config.toml` any more, so the wiring is invisible at the conventional
+path. That is exactly why those rows are reported explicitly — an env var that goes
+missing looks identical to a tool that simply has no config.
+
+Everything remaining stays a symlink, either because the format has no include
+directive and no env-var equivalent (`.gitignore_global`, whose global ignores survive
+via the `.gitconfig` stub's `core.excludesfile` override) or because it is only ever
+used interactively (Windows Terminal, GlazeWM, Zebar).
 
 Three consequences worth knowing:
 
