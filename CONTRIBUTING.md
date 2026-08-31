@@ -33,11 +33,19 @@ otherwise run different code than CI.
 
 ## The rules that bite
 
-- **Don't hand-edit `nvim/` or `starship/starship.toml`.** They are mirrored from
-  [`dotfiles-core`](https://github.com/dotgibson/dotfiles-core) and CI diffs them
-  against the commit recorded in `.core-ref`. Fix it in Core, then re-run
-  `nvim-sync.ps1` / `starship-sync.ps1`. A local edit will fail the parity gate,
-  and `robocopy /MIR` would purge it on the next sync anyway.
+- **Don't hand-edit `nvim/`, `starship/starship.toml` or `theme/palette.toml`.** They
+  are mirrored from [`dotfiles-core`](https://github.com/dotgibson/dotfiles-core) and
+  CI diffs them against the commit recorded in `.core-ref`. Fix it in Core, then re-run
+  `nvim-sync.ps1` / `starship-sync.ps1` / `theme-sync.ps1`. A local edit will fail the
+  parity gate, and `robocopy /MIR` would purge nvim's on the next sync anyway.
+- **Don't hand-edit a colour.** Every hex inside a `# core:theme:gen <id>` marker in
+  `powershell/core/` and `psmux/` is rendered from `theme/palette.toml` by
+  `gen-theme.ps1`, and `gen-theme.ps1 -Check` fails the PR that edits one by hand.
+  Change the colour in Core, `theme-sync.ps1`, then `gen-theme.ps1`. This rule exists
+  because the previous convention — a comment saying the block was "kept byte-for-byte
+  in step with Core" — was false for three fzf values and nothing noticed (#228). The
+  gate also rejects any hex in those files that the palette does not define at all, so
+  a new hand-typed colour cannot sneak in beside a generated one.
 - **`bootstrap.ps1` must stay ASCII.** It is stored UTF-8 with no BOM, so Windows
   PowerShell 5.1 reads it as the ANSI codepage — a single em-dash makes the
   *parser* fail before the version guard can print anything useful. 5.1 users are

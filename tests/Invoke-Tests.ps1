@@ -49,6 +49,15 @@ $script:CoveragePaths = @(
     './powershell/Dotfiles/Modules.Helpers.ps1'
 )
 
+# gen-theme.ps1 is deliberately NOT in the list, and this note is here so it does not
+# get "helpfully" added. Its pure half (palette parser, line walker, drift verdict,
+# residual scan) is covered by 32 tests in tests/GenTheme.Tests.ps1 — but its emitters
+# and main body are exercised by SPAWNING pwsh against a fixture tree, which in-process
+# instrumentation cannot see. Measured alone it reads 31%, so adding it would drag the
+# aggregate under the target while saying nothing true about how well it is tested.
+# Coverage here measures dot-sourceable pure helpers; a script whose real surface is a
+# child process is the wrong shape for it.
+
 # Library-only hook, matching the convention every other script here uses: lets
 # tests/RunnerContract.Tests.ps1 assert the coverage set without running the suite
 # (which would recurse).

@@ -47,12 +47,16 @@ param(
 
 $ErrorActionPreference = 'SilentlyContinue'
 
-# tokyonight-storm palette. Literal hex on purpose: psmux does not expand #{@tn_*}
-# inside #[...], and the colour has to travel as a plain value in @pwr_fg anyway
-# (see the poke note at the bottom). Same three hexes tmux-battery.sh hardcodes.
+# tokyonight palette. Literal hex on purpose: psmux does not expand #{@tn_*} inside
+# #[...], and the colour has to travel as a plain value in @pwr_fg anyway (see the
+# poke note at the bottom). GENERATED from theme/palette.toml by gen-theme.ps1 - the
+# same source Core's tmux/scripts/tmux-battery.sh renders from, so the two terminal
+# bars can no longer disagree. Do not hand-edit.
+# core:theme:gen power-palette
 $GREEN  = '#9ece6a'   # ≥60%, and the no-battery AC placeholder
 $YELLOW = '#e0af68'   # ≥20%
 $RED    = '#f7768e'   # <20%
+# core:theme:end power-palette
 
 # Nerd Font glyphs — the same codepoints tmux-battery.sh emits, so the two terminal
 # bars draw the identical icon. $PLUG is the one import from Zebar (nf-md-power_plug,

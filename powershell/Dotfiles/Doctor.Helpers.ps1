@@ -108,6 +108,27 @@ function Get-StarshipVendorDetail {
     return $detail
 }
 
+# --- pure theme-vendor formatter ----------------------------------------------
+# The third sibling, for theme/palette.toml (written by theme-sync.ps1). Carries a
+# pin like starship's, so it takes the same -Pinned argument.
+#
+# This one is worth MORE than the other two on a host, because the palette is an
+# INPUT rather than a leaf config: gen-theme.ps1 renders it into nine blocks across
+# six files. A stale palette here does not look stale — every generated block is
+# perfectly consistent with it, and the terminal layer is simply a version behind
+# the fleet with nothing on screen to say so. Pure (the file read lives in the
+# probe), so the formatting is unit-tested.
+function Get-ThemeVendorDetail {
+    [OutputType([string])]
+    param([string]$Sha, [string]$When, [string]$Pinned)
+    if (-not $Sha) { return 'no vendor ref recorded (run theme-sync.ps1)' }
+    $short = if ($Sha.Length -ge 7) { $Sha.Substring(0, 7) } else { $Sha }
+    $detail = "vendored from core@$short"
+    if ($Pinned -and $Pinned -ne '(branch tip)' -and $Pinned -ne 'unknown') { $detail += " (pinned $Pinned)" }
+    if ($When -and $When -ne 'unknown') { $detail += "  ($When)" }
+    return $detail
+}
+
 # --- scoop bucket health -> a doctor result -----------------------------------
 # Pure: takes the faults the host probe found (one string per unhealthy bucket,
 # already formatted by packages/Check-PackageFreshness.ps1's Get-ScoopBucketFault)

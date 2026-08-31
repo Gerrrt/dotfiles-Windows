@@ -17,7 +17,7 @@
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
 # provides: dotfiles-doctor, Get-DotRepoRevision
-# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotfilesRetiredLinkPlan, Get-DotfilesEnvPlan, Get-DotRemoteWiringResult, Test-StubIntoRepo, Test-StubDirIntoRepo, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, Get-ScoopBucketHealthResult, Get-StarshipVendorDetail, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn, Get-DotMaintTaskName, Get-DotMaintTaskHealth
+# requires: Format-DotWrap, Get-DoctorFixPlan, Get-DoctorGroup, Get-DoctorSummary, Get-DotConsoleWidth, Get-DotfilesLinkPlan, Get-DotfilesRetiredLinkPlan, Get-DotfilesEnvPlan, Get-DotRemoteWiringResult, Test-StubIntoRepo, Test-StubDirIntoRepo, Get-DotGlyph, Get-DotRepoVersionDetail, Get-FragmentHealthResult, Get-NvimVendorDetail, Get-ScoopBucketHealthResult, Get-StarshipVendorDetail, Get-ThemeVendorDetail, modules-localize, New-DoctorResult, Test-Cmd, Test-CmdRuns, Test-DotUnicode, Write-DotErr, Write-DotHost, Write-DotWarn, Get-DotMaintTaskName, Get-DotMaintTaskHealth
 # NB Get-ScoopBucketFault is deliberately absent: it comes from
 # packages/Check-PackageFreshness.ps1, dot-sourced on demand via its
 # DOTFILES_PKGFRESH_LIBONLY hook, not from the module or an earlier fragment — so it
@@ -226,6 +226,21 @@ function script:Get-DoctorResults {
             $ssPin  = (($ssRef | Where-Object { $_ -match '^pinned\s*=' } | Select-Object -First 1) -replace '^pinned\s*=\s*', '')
         }
         $r.Add((New-DoctorResult 'starship vendor' 'ok' (Get-StarshipVendorDetail -Sha "$ssSha" -When "$ssWhen" -Pinned "$ssPin")))
+
+        # theme vendor provenance — the third mirrored asset (theme/palette.toml).
+        # Reported for a reason the other two do not have: the palette is the INPUT
+        # gen-theme.ps1 renders the whole terminal layer from, so a stale one leaves
+        # every generated block self-consistent and quietly a version behind Core.
+        # This row is the only place that shows on the host.
+        $thRefFile = Join-Path $root 'theme\.core-ref'
+        $thSha = ''; $thWhen = ''; $thPin = ''
+        if (Test-Path $thRefFile) {
+            $thRef  = Get-Content $thRefFile -ErrorAction SilentlyContinue
+            $thSha  = (($thRef | Where-Object { $_ -match '^commit\s*=' } | Select-Object -First 1) -replace '^commit\s*=\s*', '')
+            $thWhen = (($thRef | Where-Object { $_ -match '^date\s*='   } | Select-Object -First 1) -replace '^date\s*=\s*', '')
+            $thPin  = (($thRef | Where-Object { $_ -match '^pinned\s*=' } | Select-Object -First 1) -replace '^pinned\s*=\s*', '')
+        }
+        $r.Add((New-DoctorResult 'theme vendor' 'ok' (Get-ThemeVendorDetail -Sha "$thSha" -When "$thWhen" -Pinned "$thPin")))
     }
 
     # profile wiring. The profile is a Kind='Stub' row (a real file that dot-sources

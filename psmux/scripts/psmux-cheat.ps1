@@ -111,10 +111,14 @@ if (-not (Get-Command fzf -ErrorAction SilentlyContinue)) {
     return
 }
 
-# tokyonight: blue group, comment-grey description (ANSI 24-bit)
+# tokyonight: accent group, muted description (ANSI 24-bit). The two SGR lines are
+# GENERATED from theme/palette.toml by gen-theme.ps1 - the twin of Core's
+# emit_cheat_sgr for tmux/scripts/tmux-cheat.sh. Do not hand-edit.
 $e   = [char]27
+# core:theme:gen cheat-sgr
 $gc  = "$e[38;2;122;162;247m"   # blue
 $dim = "$e[38;2;86;95;137m"     # comment
+# core:theme:end cheat-sgr
 $rst = "$e[0m"
 
 # emit "<pretty display><TAB><copy token>"

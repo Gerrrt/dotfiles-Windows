@@ -1,0 +1,79 @@
+name: theme-sync
+
+# Keep theme/palette.toml in step with dotfiles-core, and REGENERATE the terminal
+# layer from it. Core authors every colour in that one flat table (dotfiles-core#679);
+# this host renders it into nine blocks across six files via gen-theme.ps1. The bot
+# runs weekly and opens a PR when Core's palette has ACTUALLY changed, so a fleet-wide
+# restyle reaches this repo instead of leaving it the one that still types the numbers
+# (#228). First-party (GITHUB_TOKEN + gh, no third-party action); workflow_dispatch
+# syncs on demand. Sibling of starship-sync.yml and nvim-sync.yml.
+
+on:
+  schedule:
+    - cron: "0 8 * * 4" # Thursdays 08:00 UTC, a day after starship-sync
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Ref-independent: the bot always force-updates ONE fixed branch, so runs must
+  # never overlap regardless of which ref launched them.
+  group: theme-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    # Fork guard (G9): the scheduled mirror runs only on the canonical repo — a fork has
+    # nothing to sync and shouldn't attempt the branch push.
+    if: github.repository_owner == 'dotgibson'
+    # theme-sync.ps1 copies a single file with Copy-Item and gen-theme.ps1 is pure
+    # PowerShell string work, so the cheaper Linux runner is fine — pwsh ships on
+    # ubuntu-latest.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # push the sync branch
+      pull-requests: write # open/update the PR
+    env:
+      BRANCH: automation/theme-sync
+      GH_TOKEN: ${{ github.token }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Sync palette.toml from dotfiles-core
+        shell: pwsh
+        run: ./theme-sync.ps1
+      # THE STEP THE OTHER TWO SYNC BOTS DO NOT NEED. nvim and starship vendor LEAF
+      # configs — copying the file is the whole job. The palette is an INPUT, so a sync
+      # that stopped here would land a new palette beside consumers still rendered from
+      # the old one, and the theme-gen gate would (correctly) fail the bot's own PR.
+      - name: Regenerate the terminal layer from the new palette
+        shell: pwsh
+        run: ./gen-theme.ps1
+      - name: Open a PR if the palette drifted
+        shell: bash
+        run: |
+          set -euo pipefail
+          # theme/.core-ref carries a per-run `synced` timestamp, so judge drift on the
+          # palette and the generated consumers — NOT on .core-ref, which changes every
+          # run. status --porcelain (NOT diff --quiet) so a brand-new file still counts.
+          changed="$(git status --porcelain -- theme/palette.toml powershell/ psmux/)"
+          if [ -z "$changed" ]; then
+            git checkout -- theme/.core-ref 2>/dev/null || true
+            echo "✅ palette already in step with Core" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git add theme/palette.toml theme/.core-ref powershell/ psmux/
+          git commit -m "chore(theme): sync palette from dotfiles-core and regenerate (theme-sync bot)"
+          git push -f -u origin "$BRANCH"
+          # Idempotent: update the existing PR if one is already open for this branch.
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --head "$BRANCH" --base "$DEFAULT_BRANCH" \
+              --title "chore(theme): sync palette from dotfiles-core and regenerate" \
+              --body "Automated by the theme-sync bot. Core's \`theme/palette.toml\` moved ahead of the vendored copy here; this re-runs \`theme-sync.ps1\` and then \`gen-theme.ps1\`, so the palette and every block rendered from it move together. Review the colour diff, let CI run, then merge."
+          fi
+          echo "🎨 opened/updated PR on \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"

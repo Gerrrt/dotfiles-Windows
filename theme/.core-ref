@@ -1,0 +1,9 @@
+# dotfiles-Windows :: theme vendor provenance (written by theme-sync.ps1)
+# The Core commit this palette.toml was vendored from. dotfiles-doctor reads it.
+source = https://github.com/dotgibson/dotfiles-core.git
+branch = main
+pinned = (branch tip)
+commit = a85622e9ec439d478614d7432f2641060b3430af
+tag    = v5.5.0-7-ga85622e
+date   = 2026-08-31
+synced = 2026-08-31T20:07:47Z

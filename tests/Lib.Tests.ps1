@@ -121,6 +121,42 @@ Describe 'Get-DotAnsiSgr' {
     }
 }
 
+Describe 'Get-DotAccentSpec' {
+    # The pwsh twin of Core's _CORE_ACCENT_SPEC / _CORE_MUTED_SPEC. Generated from
+    # theme/palette.toml, so these assertions are also the check that a palette sync
+    # cannot quietly change what the accent IS without a visible test change.
+    It 'uses truecolor tokens when the terminal advertises 24-bit' {
+        foreach ($ct in @('truecolor', '24bit')) {
+            $a = Get-DotAccentSpec -ColorTerm $ct
+            $a.TrueColor  | Should -BeTrue
+            $a.AccentSpec | Should -Be '#7aa2f7'
+            $a.MutedSpec  | Should -Be '#565f89'
+            $a.Accent     | Should -Be "$([char]27)[1;38;2;122;162;247m"
+            $a.Muted      | Should -Be "$([char]27)[38;2;86;95;137m"
+        }
+    }
+    It 'degrades to the hand-picked 256-colour indices otherwise' {
+        # NOT derivable from the hex - they are eyeballed cube approximations that
+        # theme/palette.toml carries by hand and --refresh never touches.
+        $a = Get-DotAccentSpec -ColorTerm ''
+        $a.TrueColor  | Should -BeFalse
+        $a.Accent     | Should -Be "$([char]27)[1;38;5;111m"
+        $a.Muted      | Should -Be "$([char]27)[38;5;103m"
+    }
+    It 'keeps the SGR and spec fallbacks DIFFERENT, as Core does' {
+        # The two forms deliberately disagree (SGR 111/103 vs spec 75/244). A
+        # generator that derived one from the other would silently recolour the
+        # non-truecolor tier, so assert the disagreement rather than assume it.
+        $a = Get-DotAccentSpec -ColorTerm 'dumb'
+        $a.AccentSpec | Should -Be 75
+        $a.MutedSpec  | Should -Be 244
+        $a.Accent     | Should -Not -Match '38;5;75m'
+    }
+    It 'treats an unset COLORTERM as not-truecolor' {
+        (Get-DotAccentSpec -ColorTerm $null).TrueColor | Should -BeFalse
+    }
+}
+
 Describe 'Test-DotGum' {
     It 'is true when gum is present, colour on, interactive, and not opted out' {
         Test-DotGum -NoGum '' -HasGum $true -Color $true -Interactive $true | Should -BeTrue
