@@ -116,6 +116,27 @@ Describe 'Get-StarshipVendorDetail' {
     }
 }
 
+Describe 'Get-ThemeVendorDetail' {
+    It 'formats the short sha + commit date' {
+        $d = Get-ThemeVendorDetail -Sha 'a85622e9ec439d4' -When '2026-08-31'
+        $d | Should -Match 'core@a85622e'
+        $d | Should -Match '2026-08-31'
+    }
+    It 'surfaces an explicit pin' {
+        (Get-ThemeVendorDetail -Sha 'abcdef1' -When '2026-08-31' -Pinned 'v5.5.0') |
+            Should -Match 'pinned v5\.5\.0'
+    }
+    It 'does not render the (branch tip) sentinel as a pin' {
+        (Get-ThemeVendorDetail -Sha 'abcdef1' -When '2026-08-31' -Pinned '(branch tip)') |
+            Should -Not -Match 'pinned'
+    }
+    It 'names theme-sync.ps1 when no ref is recorded' {
+        # The remedy has to name the RIGHT script - pointing a stale palette at
+        # nvim-sync or starship-sync would send someone to re-vendor the wrong asset.
+        (Get-ThemeVendorDetail -Sha '' -When '') | Should -Match 'theme-sync\.ps1'
+    }
+}
+
 Describe 'Get-DoctorGroup' {
     It 'buckets shell/environment probes' {
         Get-DoctorGroup 'PowerShell 7 (pwsh)' | Should -Be 'Shell & environment'

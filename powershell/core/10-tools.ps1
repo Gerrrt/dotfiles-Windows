@@ -113,9 +113,11 @@ if ($script:DotAvailModules.Contains('PSReadLine')) {
         # a dark selection bar. Raw 24-bit SGR (Windows Terminal advertises truecolor);
         # [char]27 = ESC, matching the escapes in core/05-lib.ps1's renderers.
         Set-PSReadLineOption -Colors @{
+            # core:theme:gen psreadline-prediction
             InlinePrediction       = "$([char]27)[38;2;86;95;137m"
             ListPrediction         = "$([char]27)[38;2;122;162;247m"
-            ListPredictionSelected = "$([char]27)[48;2;40;52;74m"
+            ListPredictionSelected = "$([char]27)[48;2;46;60;100m"
+            # core:theme:end psreadline-prediction
         }
       } catch {
           # predictions unavailable in this host - carry on
@@ -361,7 +363,7 @@ function global:prof-trace {
 function global:Invoke-Starship-PreCommand {
     # ── Command-block separator (port of Core zsh 00-tools.zsh `_cmd_block_*`, P12) ──
     # A thin full-width rule drawn above each prompt that FOLLOWED a command, colored by
-    # that command's exit status — dim (#414868) on success, red (#f7768e) on failure —
+    # that command's exit status — the palette's `rule` role on success, `err` on failure —
     # so scrollback reads as scannable blocks. The AddToHistoryHandler above sets
     # $global:DotCmdBlockRan as the preexec signal (a bare Enter never accepts a line, so
     # it draws no rule, exactly like Core's preexec-flag gate). Written via [Console]::Write
@@ -377,7 +379,9 @@ function global:Invoke-Starship-PreCommand {
             $w = [Console]::WindowWidth
             if ($w -gt 0) {
                 $fail = ($ec -is [int]) -and ($ec -ne 0)
+                # core:theme:gen cmd-separator-colors
                 $col  = if ($fail) { "$([char]27)[38;2;247;118;142m" } else { "$([char]27)[38;2;65;72;104m" }
+                # core:theme:end cmd-separator-colors
                 [Console]::Write($col + (([string][char]0x2500) * $w) + "$([char]27)[0m`n")
             }
         } catch { }   # no console (redirected / CI) → skip the rule, never throw
@@ -443,18 +447,35 @@ __lap 'zoxide'
 # init, so the atuin block RE-ASSERTS this lazy Ctrl+R stub afterwards and moves
 # atuin's TUI to Ctrl+E to match zsh (Ctrl+E = atuin, Ctrl+R = quick fzf history).
 if ((Test-Cmd fzf) -and $script:DotAvailModules.Contains('PSFzf') -and -not $global:DotfilesInit.Fzf) {
-    # Layout + the EXPLICIT tokyonight-storm palette, kept byte-for-byte in step with
-    # Core's zsh fzf.zsh FZF_DEFAULT_OPTS so fzf looks identical across the WSL-zsh and
-    # Windows-pwsh halves of the fleet (previously pwsh fell back to the terminal's
-    # default colours — the one fzf inconsistency a cross-platform user would notice).
-    # Env is cheap and inherited by child panes, so it stays EAGER — no reason to defer.
+    # Layout (hand-authored) + the EXPLICIT tokyonight palette, GENERATED from
+    # theme/palette.toml by gen-theme.ps1 so fzf looks identical across the WSL-zsh and
+    # Windows-pwsh halves of the fleet. Env is cheap and inherited by child panes, so it
+    # stays EAGER — no reason to defer.
+    #
+    # This block used to be hand-copied under a comment claiming it was "kept
+    # byte-for-byte in step with Core's zsh fzf.zsh". It was not: border and scrollbar
+    # carried a stale border_highlight, and gutter a bg colour from a different
+    # tokyonight style. One --color per line, matching zsh/35-fzf.zsh line for line, is
+    # what makes the two readable side by side; the old three-per-line packing is how
+    # three wrong values hid in plain sight. Do not hand-edit inside the markers (#228).
     $env:FZF_DEFAULT_OPTS = @(
         '--height=60% --layout=reverse --border=rounded --info=inline'
-        '--color=border:#27a1b9 --color=fg:#c0caf5 --color=gutter:#16161e'
-        '--color=header:#ff9e64 --color=hl:#2ac3de --color=hl+:#2ac3de'
-        '--color=info:#545c7e --color=marker:#ff007c --color=pointer:#ff007c'
-        '--color=prompt:#2ac3de --color=query:#c0caf5:regular --color=scrollbar:#27a1b9'
-        '--color=separator:#ff9e64 --color=spinner:#ff007c'
+        # core:theme:gen fzf-colors
+        '--color=border:#29a4bd'
+        '--color=fg:#c0caf5'
+        '--color=gutter:#1d202f'
+        '--color=header:#ff9e64'
+        '--color=hl:#2ac3de'
+        '--color=hl+:#2ac3de'
+        '--color=info:#545c7e'
+        '--color=marker:#ff007c'
+        '--color=pointer:#ff007c'
+        '--color=prompt:#2ac3de'
+        '--color=query:#c0caf5:regular'
+        '--color=scrollbar:#29a4bd'
+        '--color=separator:#ff9e64'
+        '--color=spinner:#ff007c'
+        # core:theme:end fzf-colors
     ) -join ' '
     if (Test-Cmd fd) { $env:FZF_DEFAULT_COMMAND = 'fd --type f --hidden --follow --exclude .git' }
 

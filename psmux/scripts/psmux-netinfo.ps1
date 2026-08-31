@@ -41,14 +41,18 @@ $script:LastPill = ''
 # inside @vpn_pill. Default green; Pill() overrides it per state (orange tunnel / green LAN).
 $script:LastFg = '#9ece6a'
 
-# tokyonight-storm palette. Literal hex on purpose: psmux does not expand #{@tn_*}
-# inside #[...] (whether in style options or in #() output), and BG is the bar's
-# highlight bg (@tn_bg_hl = #292e42) so the pill floats on the bar like the cwd /
-# clock pills in psmux.conf.
+# tokyonight palette. Literal hex on purpose: psmux does not expand #{@tn_*} inside
+# #[...] (whether in style options or in #() output), and BG is the bar's highlight
+# background so the pill floats on the bar like the cwd / clock pills in psmux.conf.
+# GENERATED from theme/palette.toml by gen-theme.ps1 - do not hand-edit. The prose
+# names the palette TOKEN rather than repeating its hex, so this comment cannot drift
+# away from the values below it.
+# core:theme:gen netinfo-palette
 $BGHL   = '#292e42'
 $BG     = '#24283b'
 $ORANGE = '#ff9e64'
 $GREEN  = '#9ece6a'
+# core:theme:end netinfo-palette
 
 # left/right rounded caps (Nerd Font) — same glyphs as @cap_l / @cap_r
 $CAP_L = ""

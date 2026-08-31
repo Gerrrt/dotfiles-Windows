@@ -921,16 +921,62 @@ function Get-DotAnsiSgr {
         [bool]$TrueColor = (Test-DotTrueColor)
     )
     if (-not $TrueColor) { return '' }
+    # GENERATED from theme/palette.toml by gen-theme.ps1 — do not hand-edit. One key
+    # per line because a style flip changes the digit COUNT, and any column-aligned
+    # layout would then churn its whitespace on every palette change and bury the
+    # value diff under it.
     $palette = @{
-        Red  = '247;118;142'; Green   = '158;206;106'; Yellow     = '224;175;104'
-        Blue = '122;162;247'; Magenta = '187;154;247'; Cyan       = '125;207;255'
-        Gray = '169;177;214'; White   = '192;202;245'; Black      = '26;27;38'
-        DarkGray = '86;95;137'; DarkYellow = '255;158;100'
+        # core:theme:gen ansi-sgr-palette
+        Red        = '247;118;142'
+        Green      = '158;206;106'
+        Yellow     = '224;175;104'
+        Blue       = '122;162;247'
+        Magenta    = '187;154;247'
+        Cyan       = '125;207;255'
+        Gray       = '169;177;214'
+        White      = '192;202;245'
+        Black      = '29;32;47'
+        DarkGray   = '86;95;137'
+        DarkYellow = '255;158;100'
+        # core:theme:end ansi-sgr-palette
     }
     $rgb = $palette[$Color]
     if (-not $rgb) { return '' }
     $code = if ($Layer -eq 'bg') { '48' } else { '38' }
     return ("$([char]27)[$code;2;${rgb}m")
+}
+
+# --- Get-DotAccentSpec --------------------------------------------------------
+# The pwsh twin of Core's _CORE_ACCENT_SPEC / _CORE_MUTED_SPEC (zsh/05-ui.zsh): the
+# ONE place $COLORTERM is interpreted for the branded accent + muted grey. Before
+# #228 this host had no equivalent at all — `grep -rn 'CORE_ACCENT|AccentSpec'
+# powershell/` returned nothing — which is why PARITY.md's accent half was a genuine
+# GAP rather than a drift.
+#
+# Two forms per tier, because colour is rendered two ways here exactly as in Core:
+# raw SGR escapes (Accent/Muted, for direct console writes) and a bare spec
+# (AccentSpec/MutedSpec) a prompt or config consumes. Truecolor when the terminal
+# advertises 24-bit, else a 256-colour approximation — the same "degrade, don't
+# assume" rule Test-DotTrueColor applies.
+#
+# The 256-colour fallbacks are HAND-PICKED in theme/palette.toml and are NOT
+# derivable from the hex: they are eyeballed cube approximations, and the two forms
+# deliberately disagree (SGR 111/103 vs spec 75/244). The generator carries both
+# verbatim and computes neither from the other.
+#
+# Deliberately NOT folded into Get-DotAnsiSgr: that one is keyed by ConsoleColor name
+# and answers "what escape paints this colour", and it returns '' rather than
+# degrading when truecolor is off. This answers "what is the accent on THIS terminal"
+# and always returns something usable. Pure given -ColorTerm, so it is unit-tested.
+function Get-DotAccentSpec {
+    [OutputType([pscustomobject])]
+    param([string]$ColorTerm = $env:COLORTERM)
+    # core:theme:gen accent-tiers
+    if ($ColorTerm -in @('24bit', 'truecolor')) {
+        return [pscustomobject]@{ Accent = "$([char]27)[1;38;2;122;162;247m"; Muted = "$([char]27)[38;2;86;95;137m"; AccentSpec = '#7aa2f7'; MutedSpec = '#565f89'; TrueColor = $true }
+    }
+    return [pscustomobject]@{ Accent = "$([char]27)[1;38;5;111m"; Muted = "$([char]27)[38;5;103m"; AccentSpec = 75; MutedSpec = 244; TrueColor = $false }
+    # core:theme:end accent-tiers
 }
 
 # Status/decoration glyphs, resolved once here so every renderer agrees and the

@@ -21,9 +21,17 @@ This repo does **not** vendor the `dotfiles-core` `git subtree` (the canonical
 fleet is `scripts/os-repos.txt` in dotfiles-core, which deliberately excludes
 Windows). Don't confuse that with this repo's own PowerShell **`powershell/core/`**
 module — same word, different thing: `powershell/core/` is native pwsh config that
-lives and is edited here. Two assets are mirrored *from* dotfiles-core: `nvim/` (via
-`nvim-sync.ps1`) and `starship/starship.toml` (via `starship-sync.ps1`, since
-starship.toml is cross-shell) — sync those rather than hand-editing drift.
+lives and is edited here. Three assets are mirrored *from* dotfiles-core: `nvim/` (via
+`nvim-sync.ps1`), `starship/starship.toml` (via `starship-sync.ps1`, since
+starship.toml is cross-shell) and `theme/palette.toml` (via `theme-sync.ps1`) — sync
+those rather than hand-editing drift.
+
+The palette is the odd one out and the one to understand: it is an **input**, not a
+leaf config. `gen-theme.ps1` renders it into nine marked `# core:theme:gen <id>` blocks
+across `powershell/core/` and `psmux/`, and `gen-theme.ps1 -Check` gates every PR. So
+**never hand-edit a colour** — change it in Core, re-sync, regenerate. Before #228 this
+repo hand-copied its hexes and three fzf values had silently drifted from Core under a
+comment claiming they matched.
 
 ## Where things are
 
@@ -34,6 +42,7 @@ starship.toml is cross-shell) — sync those rather than hand-editing drift.
 - `desktop/` — **opt-in** tiling-desktop layer: GlazeWM config + Zebar bar (symlinked into `~/.glzr`), plus the `desktop` winget group (GlazeWM/Zebar/PowerToys/TranslucentTB). Off the critical path — the host is shell-first; this is for ricing the desktop too. See `desktop/README.md`.
 - `nvim/` — Neovim config mirrored from dotfiles-core via `nvim-sync.ps1`
 - `starship/` — cross-shell prompt config mirrored from dotfiles-core via `starship-sync.ps1`
+- `theme/` — `palette.toml`, the fleet's single colour source, mirrored via `theme-sync.ps1`; rendered into the terminal layer by `gen-theme.ps1`
 - `git/` — `.gitconfig` / `.gitignore_global`
 - `jj/` — jujutsu config (host twin of Core's `jujutsu/config.toml`; linked to `%APPDATA%\jj\config.toml`)
 - `maint/Maintenance.ps1` — the daily maintenance runner (control surface: `os/40-maint.ps1`)
