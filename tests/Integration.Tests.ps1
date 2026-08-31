@@ -38,7 +38,7 @@ BeforeAll {
     foreach ($row in $script:Plan) {
         $parent = Split-Path -Parent $row.Target
         if ($parent -and -not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
-        if ($row.Target -match '\.(ps1|json|conf|gitconfig|gitignore_global|toml)$' -or (Split-Path -Leaf $row.Target) -eq 'config') {
+        if ($row.Target -match '\.(ps1|json|conf|gitconfig|gitignore_global|toml|lua)$' -or (Split-Path -Leaf $row.Target) -eq 'config') {
             'target' | Set-Content -LiteralPath $row.Target
         } else {
             New-Item -ItemType Directory -Force -Path $row.Target | Out-Null
@@ -100,5 +100,114 @@ Describe 'install -> uninstall round-trip' {
         }
         $removed | Should -Be $script:Plan.Count
         foreach ($row in $script:Plan) { Test-Path -LiteralPath $row.Link | Should -BeFalse }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# The nvim migration, driven through the REAL Write-StubItem.
+#
+# This is the one place install.ps1 can destroy repo content. %LOCALAPPDATA%\nvim
+# was a directory symlink onto <repo>\nvim, so before Clear-StubParent existed every
+# path operation on %LOCALAPPDATA%\nvim\init.lua resolved THROUGH it: the "existing
+# file" that got backed up was the repo's own init.lua, and the shim was written into
+# the Core-mirrored tree. Silent, and it dirties the one directory in this repo that
+# must stay byte-for-byte upstream. So this exercises the real function, not a
+# simulation of it.
+# ---------------------------------------------------------------------------
+Describe 'Write-StubItem over the legacy nvim directory symlink' {
+    BeforeEach {
+        $script:Box  = New-DotTestTempDir -Prefix 'nvimmig'
+        $script:BRepo = Join-Path $script:Box 'repo'
+        $script:BLocal = Join-Path $script:Box 'local'
+        New-Item -ItemType Directory -Force -Path (Join-Path $script:BRepo 'nvim\lua\gerrrt') | Out-Null
+        New-Item -ItemType Directory -Force -Path $script:BLocal | Out-Null
+        'require("gerrrt")' | Set-Content -LiteralPath (Join-Path $script:BRepo 'nvim\init.lua') -NoNewline
+        '{}'                | Set-Content -LiteralPath (Join-Path $script:BRepo 'nvim\lazy-lock.json') -NoNewline
+
+        # Write-StubItem reads these from its enclosing scope, exactly as install.ps1
+        # sets them up: RepoRoot for the idempotency check, DryRun/LinkStats for
+        # reporting, Yes so Confirm-Overwrite doesn't prompt in a test host.
+        # $RepoRoot is set UNSCOPED as well: install.ps1 reads it unqualified, and
+        # dot-sourcing the installer in BeforeAll left its own $RepoRoot (this repo)
+        # in a scope that a bare $script: assignment does not reach.
+        $RepoRoot          = $script:BRepo
+        $script:RepoRoot   = $script:BRepo
+        $script:DryRun     = $false
+        $script:Yes        = $true
+        $script:LinkStats  = @{ linked = 0; copied = 0; stubbed = 0; skipped = 0; backedup = 0 }
+
+        $script:BPlan = Get-DotfilesLinkPlan -RepoRoot $script:BRepo -HomeDir (Join-Path $script:Box 'home') `
+            -LocalAppData $script:BLocal -RoamingAppData (Join-Path $script:Box 'roaming') -Documents (Join-Path $script:Box 'docs')
+        $script:BNvim = $script:BPlan | Where-Object Name -eq 'nvim config'
+    }
+    AfterEach {
+        if ($script:Box -and (Test-Path $script:Box)) { Remove-Item $script:Box -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    It 'retires the symlink and leaves the repo tree byte-identical' {
+        $repoInit = Join-Path $script:BRepo 'nvim\init.lua'
+        $before   = (Get-FileHash -LiteralPath $repoInit).Hash
+        New-Item -ItemType SymbolicLink -Path $script:BNvim.LegacyLink -Target (Join-Path $script:BRepo 'nvim') | Out-Null
+
+        Write-StubItem -Name $script:BNvim.Name -Target $script:BNvim.Target -Link $script:BNvim.Link -LegacyLink $script:BNvim.LegacyLink
+
+        # The repo is untouched: same bytes, no .bak dropped beside it, nothing added.
+        (Get-FileHash -LiteralPath $repoInit).Hash | Should -Be $before
+        @(Get-ChildItem -LiteralPath (Join-Path $script:BRepo 'nvim') -Filter '*.bak' -Recurse).Count | Should -Be 0
+        @(Get-ChildItem -LiteralPath (Join-Path $script:BRepo 'nvim') | ForEach-Object Name | Sort-Object) |
+            Should -Be @('init.lua', 'lazy-lock.json', 'lua')
+
+        # And %LOCALAPPDATA%\nvim is now a REAL directory holding the shim.
+        $dir = Get-Item -LiteralPath $script:BNvim.LegacyLink -Force
+        $dir.LinkType | Should -BeNullOrEmpty
+        Test-StubIntoRepo -Link $script:BNvim.Link -Root $script:BRepo | Should -BeTrue
+        $script:LinkStats.stubbed | Should -Be 1
+    }
+
+    It 'keeps the retired symlink as a .bak rather than deleting it' {
+        New-Item -ItemType SymbolicLink -Path $script:BNvim.LegacyLink -Target (Join-Path $script:BRepo 'nvim') | Out-Null
+        Write-StubItem -Name $script:BNvim.Name -Target $script:BNvim.Target -Link $script:BNvim.Link -LegacyLink $script:BNvim.LegacyLink
+        @(Get-ChildItem -LiteralPath $script:BLocal -Force | Where-Object Name -like 'nvim.*.bak').Count | Should -Be 1
+        $script:LinkStats.backedup | Should -Be 1
+    }
+
+    It 'retires a copy-mode leftover too, so no stale lua\ shadows the repo on rtp' {
+        # No Developer Mode => Link-Item copied the tree instead of linking it.
+        New-Item -ItemType Directory -Force -Path (Join-Path $script:BNvim.LegacyLink 'lua') | Out-Null
+        'stale' | Set-Content -LiteralPath $script:BNvim.Link
+
+        Write-StubItem -Name $script:BNvim.Name -Target $script:BNvim.Target -Link $script:BNvim.Link -LegacyLink $script:BNvim.LegacyLink
+
+        Test-Path -LiteralPath (Join-Path $script:BNvim.LegacyLink 'lua') | Should -BeFalse
+        Test-StubIntoRepo -Link $script:BNvim.Link -Root $script:BRepo | Should -BeTrue
+    }
+
+    It 'is idempotent: a second run leaves the stub alone and drops no .bak' {
+        New-Item -ItemType SymbolicLink -Path $script:BNvim.LegacyLink -Target (Join-Path $script:BRepo 'nvim') | Out-Null
+        Write-StubItem -Name $script:BNvim.Name -Target $script:BNvim.Target -Link $script:BNvim.Link -LegacyLink $script:BNvim.LegacyLink
+        $first = Get-Content -LiteralPath $script:BNvim.Link -Raw
+
+        Write-StubItem -Name $script:BNvim.Name -Target $script:BNvim.Target -Link $script:BNvim.Link -LegacyLink $script:BNvim.LegacyLink
+
+        Get-Content -LiteralPath $script:BNvim.Link -Raw | Should -Be $first
+        @(Get-ChildItem -LiteralPath $script:BLocal -Force | Where-Object Name -like 'nvim.*.bak').Count | Should -Be 1
+        $script:LinkStats.skipped | Should -Be 1
+    }
+
+    It 'never retires a stub parent the plan does not name as legacy' {
+        # The guard that stops ~/.gitconfig offering to retire $HOME: the home dir
+        # holds .gitignore_global, a real sibling of that row's target in the repo.
+        New-Item -ItemType Directory -Force -Path (Join-Path $script:BRepo 'git') | Out-Null
+        'gitconfig'       | Set-Content -LiteralPath (Join-Path $script:BRepo 'git\.gitconfig')
+        'gitignore'       | Set-Content -LiteralPath (Join-Path $script:BRepo 'git\.gitignore_global')
+        $git      = $script:BPlan | Where-Object Name -eq '.gitconfig'
+        $fakeHome = Split-Path -Parent $git.Link
+        New-Item -ItemType Directory -Force -Path $fakeHome | Out-Null
+        'mine' | Set-Content -LiteralPath (Join-Path $fakeHome '.gitignore_global')
+
+        Write-StubItem -Name $git.Name -Target $git.Target -Link $git.Link -LegacyLink $git.LegacyLink
+
+        Test-Path -LiteralPath $fakeHome | Should -BeTrue
+        @(Get-ChildItem -LiteralPath (Split-Path -Parent $fakeHome) -Force | Where-Object Name -like 'home.*.bak').Count | Should -Be 0
     }
 }

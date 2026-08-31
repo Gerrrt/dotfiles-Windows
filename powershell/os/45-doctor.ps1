@@ -93,6 +93,31 @@ function script:Test-LinkIntoRepo {
     return ($target -and $global:DOTFILES -and $target -like "*$($global:DOTFILES)*")
 }
 
+# --- does ANY component of this path go through a reparse point? --------------
+# Redirection Guard refuses the whole traversal, not just the final component, so
+# asking `Get-Item $Link` whether IT is a link is not enough. The nvim row is the
+# case that proves it: the wired path is %LOCALAPPDATA%\nvim\init.lua, and back when
+# %LOCALAPPDATA%\nvim was a directory symlink into the repo, Get-Item on the file
+# resolved straight THROUGH the link and reported LinkType $null — a broken box
+# graded 'ok' while nvim was starting bare over ssh.
+#
+# So walk up from $Path and report the first reparse point found. -Force so a hidden
+# or system link still counts. Stops at the drive root; returns $false on a path that
+# doesn't exist, which the caller already reports separately as 'not wired'.
+function script:Test-DotPathViaReparsePoint {
+    [OutputType([bool])]
+    param([string]$Path)
+    $cursor = $Path
+    while ($cursor) {
+        $item = Get-Item -LiteralPath $cursor -Force -ErrorAction SilentlyContinue
+        if ($item -and $item.LinkType) { return $true }
+        $parent = Split-Path -Parent $cursor
+        if (-not $parent -or $parent -eq $cursor) { break }
+        $cursor = $parent
+    }
+    return $false
+}
+
 # --- Redirection Guard: is ProcessRedirectionTrustPolicy enforced here? -------
 # Host probe (fragment, not the module — the module keeps only pure logic). Under
 # enforcement a process cannot traverse a reparse point into a non-admin-owned
@@ -242,7 +267,10 @@ function script:Get-DoctorResults {
             # would report every stub as broken (and vice versa).
             if ($row.Kind -eq 'Stub') {
                 if (Test-StubIntoRepo -Link $row.Link -Root $global:DOTFILES) { $r.Add((New-DoctorResult "link: $($row.Name)" 'ok' 'stub -> repo')) }
-                elseif (Test-LinkIntoRepo $row.Link)                          { $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'symlinked — will not resolve over ssh' 're-run install.ps1 -SkipPackages')) }
+                # The reparse point can sit on an ANCESTOR (nvim: %LOCALAPPDATA%\nvim
+                # was the linked directory), in which case the row is still "symlinked"
+                # even though the wired path itself is a real file in the repo.
+                elseif ((Test-LinkIntoRepo $row.Link) -or (Test-DotPathViaReparsePoint $row.Link)) { $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'symlinked — will not resolve over ssh' 're-run install.ps1 -SkipPackages')) }
                 elseif (Test-Path $row.Link)                                  { $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'present, does not include the repo' 're-run install.ps1 -SkipPackages')) }
                 else                                                          { $r.Add((New-DoctorResult "link: $($row.Name)" 'warn' 'missing' 'run install.ps1')) }
             }
@@ -271,18 +299,21 @@ function script:Get-DoctorResults {
             }
         }
         # Redirection Guard: would the wired configs survive an ssh session?
-        # Only the Kind='Stub' rows are actionable here. Plain symlink rows are also
-        # unreadable over ssh under enforcement, but that is a documented limitation
-        # with no fix at this layer (docs/REMOTE-ACCESS.md) — listing all eleven every
-        # run would bury the one row you can actually do something about.
+        # Only the Kind='Stub' rows are actionable here. The remaining plain symlink
+        # rows (psmux, jj, mise, .gitignore_global, and the interactive-only desktop
+        # ones) are also unreadable over ssh under enforcement, but that is a
+        # documented limitation with no fix at this layer (docs/REMOTE-ACCESS.md) —
+        # listing them all every run would bury the rows you can act on.
         $rgEnforced = Get-DotRedirectionTrustEnforced
         if ($null -ne $rgEnforced) {
             $stubRows = @(Get-DotfilesLinkPlan -RepoRoot $root | Where-Object Kind -eq 'Stub')
             $bad = @()
             foreach ($row in $stubRows) {
                 $item = Get-Item -LiteralPath $row.Link -Force -ErrorAction SilentlyContinue
+                # The WHOLE path, not just its last component — see
+                # Test-DotPathViaReparsePoint for the nvim case that needs it.
                 $res  = Get-DotRemoteWiringResult -Name $row.Name -Kind $row.Kind `
-                            -IsReparsePoint ([bool]($item -and $item.LinkType)) `
+                            -IsReparsePoint ([bool]($item -and (Test-DotPathViaReparsePoint $row.Link))) `
                             -Enforced $rgEnforced -Exists ([bool]$item)
                 if ($res.Status -ne 'ok') { $bad += $row.Name }
             }

@@ -421,7 +421,7 @@ Describe 'Get-DotfilesLinkPlan' {
         $plan = Get-DotfilesLinkPlan -RepoRoot 'R:\repo' -HomeDir 'H:\me' -LocalAppData 'L:\app' -Documents 'D:\docs'
         $links = $plan.Link
         $links | Should -Contain 'H:\me\.gitconfig'
-        $links | Should -Contain 'L:\app\nvim'
+        $links | Should -Contain 'L:\app\nvim\init.lua'
         $links | Should -Contain 'D:\docs\PowerShell\Microsoft.PowerShell_profile.ps1'
     }
     It 'derives every target from the repo root' {
@@ -462,15 +462,16 @@ Describe 'Get-DotfilesLinkPlan' {
             $n | Should -BeLike 'Windows Terminal settings*'
         }
     }
-    It 'stubs exactly the three configs that have to survive an ssh session' {
+    It 'stubs exactly the four configs that have to survive an ssh session' {
         # A symlink is unreadable from an ssh session (Redirection Guard, inherited by
-        # sshd from the Windows service lineage - docs/REMOTE-ACCESS.md), so these three
+        # sshd from the Windows service lineage - docs/REMOTE-ACCESS.md), so these four
         # are wired as real files that include the repo copy. If this list grows, the
         # matching arm in Get-DotfilesStubContent must grow with it, or install.ps1
         # falls back to a symlink and the ssh breakage comes straight back.
         $plan = Get-DotfilesLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -LocalAppData 'L:' -Documents 'D:'
         @($plan | Where-Object Kind -eq 'Stub').Name | Should -Be @(
             'PowerShell profile'
+            'nvim config'
             '.gitconfig'
             'ssh config'
         )
@@ -478,7 +479,27 @@ Describe 'Get-DotfilesLinkPlan' {
     It 'gives every other row Kind=Symlink (no row is left without a Kind)' {
         $plan = Get-DotfilesLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -LocalAppData 'L:' -Documents 'D:'
         foreach ($row in $plan) { $row.Kind | Should -BeIn @('Stub', 'Symlink') }
-        @($plan | Where-Object Kind -eq 'Symlink').Count | Should -Be ($plan.Count - 3)
+        @($plan | Where-Object Kind -eq 'Symlink').Count | Should -Be ($plan.Count - 4)
+    }
+    It 'wires nvim as init.lua INSIDE the config dir, not the dir itself' {
+        # The reparse point that broke nvim over ssh was on %LOCALAPPDATA%\nvim, the
+        # config DIRECTORY. Wiring the file inside it is what makes a stub possible at
+        # all: the directory becomes real, and only init.lua points into the repo.
+        $plan = Get-DotfilesLinkPlan -RepoRoot 'R:\repo' -HomeDir 'H:' -LocalAppData 'L:\app' -Documents 'D:'
+        $nvim = $plan | Where-Object Name -eq 'nvim config'
+        $nvim.Kind       | Should -Be 'Stub'
+        $nvim.Link       | Should -Be 'L:\app\nvim\init.lua'
+        $nvim.Target     | Should -Be 'R:\repo\nvim\init.lua'
+        # The old shape, so uninstall can still retire it and install can retire it
+        # before writing the stub into what would otherwise be the repo.
+        $nvim.LegacyLink | Should -Be 'L:\app\nvim'
+    }
+    It 'gives LegacyLink only to the row whose shape actually changed' {
+        # LegacyLink gates the one destructive move install.ps1 can make to a stub's
+        # parent (Clear-StubParent). A row that acquires it by accident would hand that
+        # power to a directory nobody intended - $HOME, for ~/.gitconfig.
+        $plan = Get-DotfilesLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -LocalAppData 'L:' -Documents 'D:'
+        @($plan | Where-Object LegacyLink).Name | Should -Be @('nvim config')
     }
     It 'keeps .gitignore_global a symlink - a gitignore has no include directive' {
         # Deliberate: global ignores survive ssh because the .gitconfig stub overrides
@@ -490,8 +511,8 @@ Describe 'Get-DotfilesLinkPlan' {
 
 Describe 'Get-DotfilesStubContent' {
     It 'returns nothing for a row with no stub form, so the caller symlinks it' {
-        Get-DotfilesStubContent -Name 'nvim config' -Target 'R:\repo\nvim'             | Should -BeNullOrEmpty
-        Get-DotfilesStubContent -Name 'psmux.conf'  -Target 'R:\repo\psmux\psmux.conf' | Should -BeNullOrEmpty
+        Get-DotfilesStubContent -Name 'psmux.conf'   -Target 'R:\repo\psmux\psmux.conf'      | Should -BeNullOrEmpty
+        Get-DotfilesStubContent -Name 'jj config'    -Target 'R:\repo\jj\config.toml'        | Should -BeNullOrEmpty
     }
     It 'dot-sources the repo profile rather than linking to it' {
         $c = Get-DotfilesStubContent -Name 'PowerShell profile' -Target 'R:\repo\powershell\profile.ps1'
@@ -512,11 +533,102 @@ Describe 'Get-DotfilesStubContent' {
         $c | Should -Match ([regex]::Escape('excludesfile = C:/repo/git/.gitignore_global'))
         $c.IndexOf('[core]') | Should -BeGreaterThan $c.IndexOf('[include]') -Because 'last value wins for a single-valued key'
     }
+    It 'puts the repo tree on runtimepath and sources the repo init.lua' {
+        $c = Get-DotfilesStubContent -Name 'nvim config' -Target 'C:\repo\nvim\init.lua'
+        # PREPEND, so require('gerrrt') resolves in the repo and not in the shim dir.
+        $c | Should -Match ([regex]::Escape("runtimepath:prepend(config)"))
+        $c | Should -Match ([regex]::Escape("local config = 'C:/repo/nvim'"))
+        $c | Should -Match ([regex]::Escape("dofile(config .. '/init.lua')"))
+    }
+    It 'writes the Lua path with forward slashes' {
+        # '\U' is an escape in a Lua quoted string, exactly as in a git config value,
+        # so C:\Users would be eaten the same way.
+        $c = Get-DotfilesStubContent -Name 'nvim config' -Target 'C:\Users\me\repo\nvim\init.lua'
+        $c | Should -Match ([regex]::Escape("local config = 'C:/Users/me/repo/nvim'"))
+        $c | Should -Not -Match ([regex]::Escape("'C:\Users"))
+    }
+    It 'appends after/ so a Core sync that adds one is not silently dropped' {
+        $c = Get-DotfilesStubContent -Name 'nvim config' -Target 'C:\repo\nvim\init.lua'
+        $c | Should -Match ([regex]::Escape("runtimepath:append(config .. '/after')"))
+    }
+    It 'survives lazy.nvim wiping runtimepath, via an APPENDED searcher' {
+        # lazy.setup() replaces 'runtimepath' wholesale from stdpath('config')
+        # (performance.rtp.reset, on by default), which is the shim dir - so the
+        # prepend alone is gone before an eagerly-loaded spec runs its config.
+        # The searcher must be appended with no index: Neovim's vim.loader inserts
+        # its cached loaders AT 2 and 3, so a searcher placed there would be shifted
+        # around, and package.path is never consulted at all.
+        $c = Get-DotfilesStubContent -Name 'nvim config' -Target 'C:\repo\nvim\init.lua'
+        $c | Should -Match ([regex]::Escape('package.loaders or package.searchers'))
+        $c | Should -Match ([regex]::Escape('table.insert(searchers, function(name)'))
+        $c | Should -Not -Match ([regex]::Escape('table.insert(searchers, 2,'))
+        # package.path is a dead end here, so it must never be ASSIGNED to. (The shim
+        # names it in a comment explaining why - match the assignment, not the word.)
+        $c | Should -Not -Match 'package\.path\s*(=|\.\.)'
+    }
+    It 'restores runtimepath after the config runs, for runtime FILE lookups' {
+        # A searcher only answers require(). colors/, ftplugin/, syntax/, treesitter
+        # queries and :checkhealth all go through 'runtimepath'.
+        $c = Get-DotfilesStubContent -Name 'nvim config' -Target 'C:\repo\nvim\init.lua'
+        $prepends = ([regex]::Matches($c, [regex]::Escape('runtimepath:prepend(config)'))).Count
+        $prepends | Should -Be 2 -Because 'once before the config runs, once after lazy has reset it'
+        $c.LastIndexOf('runtimepath:prepend(config)') | Should -BeGreaterThan $c.IndexOf('dofile(')
+    }
+    It 'seeds lazy''s lockfile from the repo, since stdpath(config) is now the shim dir' {
+        # Core's lazy.lua seeds from stdpath('config')/lazy-lock.json, which under a
+        # stub holds no lockfile - a fresh box would resolve every plugin's default
+        # branch instead of starting from the fleet's pins.
+        $c = Get-DotfilesStubContent -Name 'nvim config' -Target 'C:\repo\nvim\init.lua'
+        $c | Should -Match ([regex]::Escape("local seed = config .. '/lazy-lock.json'"))
+        $c | Should -Match ([regex]::Escape("vim.fn.stdpath('state')"))
+    }
+    It 'warns and stops rather than erroring when the repo config is gone' {
+        $c = Get-DotfilesStubContent -Name 'nvim config' -Target 'C:\repo\nvim\init.lua'
+        $c | Should -Match 're-run install\.ps1'
+        # The guard must come BEFORE the dofile, or a missing repo is a stack trace on
+        # every startup instead of one warning.
+        $c.IndexOf('vim.notify') | Should -BeLessThan $c.IndexOf('dofile(')
+    }
     It 'puts ssh Include first - ssh_config is first-obtained-value-wins' {
         $c = Get-DotfilesStubContent -Name 'ssh config' -Target 'C:\repo\ssh\config'
         $c | Should -Match ([regex]::Escape('Include C:\repo\ssh\config'))
         $first = @($c -split "`r?`n" | Where-Object { $_ -and $_ -notmatch '^\s*#' })[0]
         $first | Should -Match '^Include '
+    }
+}
+
+Describe 'Test-DotStubParentStale' {
+    It 'retires a reparse-point parent - the shape that broke nvim over ssh' {
+        Test-DotStubParentStale -IsReparsePoint $true | Should -BeTrue
+    }
+    It 'ignores the entries of a reparse-point parent entirely' {
+        # The caller must not enumerate a linked parent (it would list the repo's own
+        # children), so a $true here has to stand on its own.
+        Test-DotStubParentStale -IsReparsePoint $true -ParentEntries @() -TargetSiblings @() | Should -BeTrue
+    }
+    It 'retires a real parent holding the target tree - the copy-mode leftover' {
+        # Link-Item falls back to a recursive Copy-Item without Developer Mode, so
+        # %LOCALAPPDATA%\nvim can be a real directory full of a stale config copy.
+        Test-DotStubParentStale -IsReparsePoint $false `
+            -ParentEntries @('init.lua', 'lua', 'lazy-lock.json') `
+            -TargetSiblings @('lua', 'lazy-lock.json') | Should -BeTrue
+    }
+    It 'leaves a correctly wired parent alone (the stub is the only occupant)' {
+        # TargetSiblings excludes the target's own leaf precisely so this holds -
+        # otherwise a healthy stub would look stale to itself and be retired every run.
+        Test-DotStubParentStale -IsReparsePoint $false `
+            -ParentEntries @('init.lua') -TargetSiblings @('lua', 'lazy-lock.json') | Should -BeFalse
+    }
+    It 'leaves an unrelated parent alone even when it is full' {
+        Test-DotStubParentStale -IsReparsePoint $false `
+            -ParentEntries @('Documents', 'Downloads', '.ssh') -TargetSiblings @('lua') | Should -BeFalse
+    }
+    It 'matches case-insensitively, like NTFS' {
+        Test-DotStubParentStale -IsReparsePoint $false `
+            -ParentEntries @('LUA') -TargetSiblings @('lua') | Should -BeTrue
+    }
+    It 'is false with nothing to compare' {
+        Test-DotStubParentStale -IsReparsePoint $false | Should -BeFalse
     }
 }
 

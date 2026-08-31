@@ -34,6 +34,12 @@ if (Test-Path $LibPath) { . $LibPath }
 # a second hand-maintained list — is the whole point: a link added to the plan is
 # automatically removed here and checked by dotfiles-doctor, with no third edit.
 # Still pure/testable: the injected roots flow straight through to the plan.
+#
+# LegacyLink paths are included: a row that has changed shape (nvim, whose config
+# directory used to BE the symlink and is now a real directory holding a stub) left
+# something on disk that the plan no longer names, and only uninstall can retire it.
+# They are appended AFTER the current links so the stub inside a legacy directory is
+# considered before the directory itself.
 function Get-DotfilesLinkMap {
     param(
         [string]$HomeDir        = $HOME,
@@ -43,8 +49,24 @@ function Get-DotfilesLinkMap {
     )
     # RepoRoot only feeds the plan's Target (the repo side); the Link paths we
     # return depend solely on the injected user-dir roots, so $RepoRoot is fine.
-    (Get-DotfilesLinkPlan -RepoRoot $RepoRoot -HomeDir $HomeDir `
-        -LocalAppData $LocalAppData -RoamingAppData $RoamingAppData -Documents $Documents).Link
+    $plan = @(Get-DotfilesLinkPlan -RepoRoot $RepoRoot -HomeDir $HomeDir `
+        -LocalAppData $LocalAppData -RoamingAppData $RoamingAppData -Documents $Documents)
+    @($plan.Link) + @($plan.LegacyLink | Where-Object { $_ })
+}
+
+# A legacy directory that is now EMPTY — the stub inside it has just been removed and
+# nothing else ever lived there. Left behind it is a confusing husk: %LOCALAPPDATA%\nvim
+# still exists, so nvim keeps reporting it as stdpath('config') after an uninstall.
+# Deliberately narrow: only a real directory (never a reparse point — that shape is
+# handled as a link above), only when empty, and only for a path the plan names.
+function Remove-EmptyLegacyDir {
+    param([string]$Path)
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Container)) { return $false }
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    if (-not $item -or $item.LinkType) { return $false }
+    if (@(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue).Count -gt 0) { return $false }
+    Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    return (-not (Test-Path -LiteralPath $Path))
 }
 
 # True when $Link is a symlink whose target resolves inside this repo. Pure-ish
@@ -132,6 +154,18 @@ foreach ($link in Get-DotfilesLinkMap) {
             Move-Item -LiteralPath $bak.FullName -Destination $link -Force
             Write-DotHost "  restored $link  (from $($bak.Name))" -Color Green
             $restored++
+        }
+    }
+}
+
+# Husk sweep: a legacy directory whose only occupant was the stub we just removed.
+# After the loop, so it can never race the removal of the file inside it.
+if (-not $DryRun) {
+    $plan = @(Get-DotfilesLinkPlan -RepoRoot $RepoRoot)
+    foreach ($legacy in @($plan.LegacyLink | Where-Object { $_ })) {
+        if (Remove-EmptyLegacyDir -Path $legacy) {
+            Write-DotHost "  removed $legacy  (empty)" -Color Green
+            $removed++
         }
     }
 }

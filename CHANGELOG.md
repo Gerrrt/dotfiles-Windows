@@ -8,6 +8,61 @@ so entries are grouped by theme rather than strict semver releases.
 
 ### Fixed
 
+- **nvim started bare over ssh — netrw and a black background.** `%LOCALAPPDATA%\nvim`
+  was a directory symlink onto the repo's `nvim/` tree, which is exactly the shape
+  Redirection Guard refuses, so the editor never read its own `init.lua`. #215 fixed
+  the three configs it named and wrote the rest off as "a documented limitation with
+  no fix at this layer" — but nvim *does* have an include mechanism, and this is it:
+  `%LOCALAPPDATA%\nvim` is now a real directory holding a real `init.lua` that
+  prepends `<repo>/nvim` to `runtimepath` and `dofile()`s it. Same single source of
+  truth, no reparse point, no elevation. Confirmed on this host, where the reading
+  was `rtp=5 netrw=nil theme=nil` and `cat` on the symlinked path returned
+  *Permission denied*.
+
+  This row is the one where the reparse point sits on the **parent** of the wired
+  path, which has two consequences the rest of the change is about. `dotfiles-doctor`
+  asked whether the wired path itself was a link, which for nvim resolved straight
+  *through* the old symlink and graded a broken box `ok`; it now walks the whole path
+  (`Test-DotPathViaReparsePoint`). And `install.ps1` had to learn to retire such a
+  parent *before* writing anything (`Clear-StubParent`) — otherwise every `Test-Path`
+  and `Move-Item` in `Write-StubItem` resolves through the old link, the "existing
+  file" backed up is the repo's own `init.lua`, and the shim lands inside the tree
+  `nvim-sync.ps1` mirrors byte-for-byte from Core. `tests/Integration.Tests.ps1` drives
+  the real `Write-StubItem` over a real symlink and asserts the repo comes out
+  byte-identical.
+
+  That retirement is gated on the plan row naming the directory as its `LegacyLink`,
+  and the gate is the whole safety story: applied to whatever directory a stub happens
+  to live in, the staleness test matched `$HOME` for `~/.gitconfig` (which contains
+  `.gitignore_global`, a real sibling of that row's target in the repo) and a `-DryRun`
+  offered to retire the user's home directory. Caught before anything ran for real; a
+  test now pins it.
+
+  Prepending `runtimepath` turned out not to be enough, which is the part worth
+  knowing before editing the shim: lazy.nvim's `performance.rtp.reset` defaults to
+  **true**, so `lazy.setup()` replaces `runtimepath` wholesale from `stdpath('config')`
+  — the shim directory — and the prepend is gone before an eagerly-loaded spec runs.
+  It surfaced as a config that clearly loaded (`netrw=1`) and then died with
+  `Failed to run 'config' for tokyonight.nvim … module 'gerrrt.utils.ui-highlights'
+  not found`. `performance.rtp.paths` is the supported answer and is set in `nvim/`,
+  which is Core-owned, so the shim survives the reset on its own: an **appended**
+  `package.loaders` searcher for `<repo>/nvim/lua` (setting `package.path` does
+  nothing — Neovim replaces the stock path searcher, and `vim.loader` inserts its
+  cached loaders at 2 and 3, so it is never consulted), plus a re-prepend of
+  `runtimepath` after the config returns, since a searcher only answers `require()`
+  and runtime *file* lookups still need the path.
+
+  Two knock-ons, both stated in `docs/REMOTE-ACCESS.md`: `stdpath('config')` is the
+  shim directory now, so the shim seeds lazy.nvim's lockfile from the repo itself
+  (Core's `lazy.lua` seeds from `stdpath('config')`, which no longer holds one) and
+  `<leader>rc` opens the shim rather than the repo's `init.lua` — unfixable here,
+  since `nvim/` is Core-owned. And the daily `dotfiles-maint` task runs under the same
+  enforcement, so `nvim --headless +Lazy! sync` had been doing nothing at all.
+
+  `uninstall.ps1` retires the legacy symlink and drops the shim's directory when the
+  stub was its only occupant, so a box that changes shape is not left with a husk
+  nothing owns. Re-wire with `install.ps1 -SkipPackages`.
+
 - **The maintenance tasks were pointing at a pwsh that Windows deletes.**
   `maint-install` baked `(Get-Command pwsh).Source` into both scheduled tasks, and a
   Store-installed pwsh resolves to a *version-pinned* package directory
