@@ -319,3 +319,102 @@ Describe 'os/40-maint.ps1 registers its tasks against a stable pwsh' {
         $script:MaintSrc | Should -Match 'ExpandEnvironmentVariables'
     }
 }
+
+# ============================================================================
+#  Step / Invoke-WithTimeout — the two silent-success bugs.
+#
+#  Both functions are nested inside Maintenance.ps1's lock `try` block, so they
+#  cannot be dot-sourced without running a real maintenance pass. They are lifted
+#  out of the AST and defined here instead, which keeps these BEHAVIOURAL: the
+#  earlier source-grep style would have passed against the broken code, since the
+#  bug was what the code did, not what it said.
+# ============================================================================
+Describe 'Maintenance runner: a step cannot silently succeed' {
+    BeforeAll {
+        $RepoRoot = Split-Path -Parent $PSScriptRoot
+        $mAst = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $RepoRoot 'maint/Maintenance.ps1'), [ref]$null, [ref]$null)
+        $defs = @($mAst.FindAll({
+            $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst]
+        }, $true) | Where-Object { $_.Name -in 'Step', 'Invoke-WithTimeout' })
+        foreach ($d in $defs) { . ([scriptblock]::Create($d.Extent.Text)) }
+
+        # Stand-ins for the runner's ambient state.
+        $script:Logged = [System.Collections.Generic.List[string]]::new()
+        function Write-Log { param([string]$Msg) $script:Logged.Add($Msg) }
+    }
+    BeforeEach {
+        $script:Logged.Clear()
+        $script:Log = Join-Path $TestDrive "maint-$([guid]::NewGuid().ToString('N')).log"
+        Set-Content -LiteralPath $script:Log -Value 'seed'
+        $Log = $script:Log      # the name Step and Invoke-WithTimeout both read
+    }
+
+    It 'logs ok when a native command exits 0' {
+        Step 'probe' { cmd /c exit 0 }
+        ($script:Logged -join "`n") | Should -Match 'ok probe'
+    }
+    It 'logs FAIL with the code when a native command exits non-zero' {
+        # The live example this comes from: `navi repo update` printed
+        # "Shim: Could not create process" and was recorded as ok.
+        Step 'probe' { cmd /c exit 3 }
+        ($script:Logged -join "`n") | Should -Match 'FAIL probe : exited 3'
+        ($script:Logged -join "`n") | Should -Not -Match 'ok probe'
+    }
+    It 'does not blame a step for the PREVIOUS step''s exit code' {
+        # $LASTEXITCODE is session state. Without the reset, a cmdlet-only step
+        # inherits the last native command's code and is reported as failing.
+        Step 'first'  { cmd /c exit 4 }
+        Step 'second' { Get-Date | Out-Null }
+        ($script:Logged -join "`n") | Should -Match 'FAIL first : exited 4'
+        ($script:Logged -join "`n") | Should -Match 'ok second'
+    }
+    It 'still logs FAIL when the body throws' {
+        Step 'probe' { throw 'boom' }
+        ($script:Logged -join "`n") | Should -Match 'FAIL probe : boom'
+    }
+
+    It 'Invoke-WithTimeout EMITS output instead of writing to the log itself' {
+        # The bug: Step's `*>> $Log` holds the log open, so an Add-Content on the
+        # same path was refused ("being used by another process") and — being a
+        # non-terminating error — did not fail the step. Output vanished, step
+        # said ok. Called directly here, the log must be untouched.
+        $before = Get-Content -LiteralPath $script:Log -Raw
+        $out = Invoke-WithTimeout -File 'cmd.exe' -ArgList @('/c', 'echo', 'hello-from-child') -TimeoutSec 30
+        ($out -join "`n") | Should -Match 'hello-from-child'
+        Get-Content -LiteralPath $script:Log -Raw | Should -Be $before
+    }
+    It 'Invoke-WithTimeout passes each argument WHOLE, spaces and all' {
+        # THE bug that made the nvim step a no-op for its entire life.
+        # Start-Process -ArgumentList joins the array with spaces without quoting, so
+        #   @('--headless', '+Lazy! sync', ...)
+        # arrived as `--headless +Lazy! sync ...` and nvim read `sync` as a FILENAME
+        # instead of as part of the +command. It opened empty buffers, hit +qa!, and
+        # exited 0 in 0.2s having synced nothing — measured 0 lines of output against
+        # 398 for the same command invoked properly.
+        $probe = Join-Path $TestDrive 'argprobe.ps1'
+        Set-Content -LiteralPath $probe -Value 'foreach ($a in $args) { "ARG=[$a]" }'
+        $pwsh = (Get-Process -Id $PID).Path
+        $out  = Invoke-WithTimeout -File $pwsh `
+            -ArgList @('-NoProfile', '-NonInteractive', '-File', $probe, 'alpha beta', 'gamma') -TimeoutSec 120
+
+        # Two arguments, not three: 'alpha beta' must survive as ONE.
+        @($out | Where-Object { $_ -like 'ARG=*' }) | Should -HaveCount 2
+        ($out -join "`n") | Should -Match ([regex]::Escape('ARG=[alpha beta]'))
+        ($out -join "`n") | Should -Not -Match ([regex]::Escape('ARG=[alpha]'))
+    }
+    It 'Invoke-WithTimeout surfaces the child exit code, so Step can see it' {
+        # Start-Process -PassThru does not set $LASTEXITCODE; without this a failing
+        # headless nvim is invisible to Step's check.
+        Invoke-WithTimeout -File 'cmd.exe' -ArgList @('/c', 'exit', '7') -TimeoutSec 30 | Out-Null
+        $LASTEXITCODE | Should -Be 7
+    }
+    It 'a failing child inside Step is reported as a FAIL end to end' {
+        Step 'nvim-ish' { Invoke-WithTimeout -File 'cmd.exe' -ArgList @('/c', 'exit', '9') -TimeoutSec 30 }
+        ($script:Logged -join "`n") | Should -Match 'FAIL nvim-ish : exited 9'
+    }
+    It 'captures the child output into the log when run through Step' {
+        Step 'nvim-ish' { Invoke-WithTimeout -File 'cmd.exe' -ArgList @('/c', 'echo', 'captured-line') -TimeoutSec 30 }
+        Get-Content -LiteralPath $script:Log -Raw | Should -Match 'captured-line'
+    }
+}

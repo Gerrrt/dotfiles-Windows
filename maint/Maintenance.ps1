@@ -86,24 +86,86 @@ try {
     }
 
     # --- labeled step that never aborts the script ----------------------------
+    # Two ways a step can fail, and both have to be caught or the log lies:
+    #
+    #   • it THROWS — a cmdlet with -ErrorAction Stop, or Invoke-WithTimeout's
+    #     timeout. Always caught.
+    #   • it EXITS NON-ZERO — a native command. PowerShell does not throw for these,
+    #     so every one of them used to be logged `ok`. Observed live: `navi repo
+    #     update` printed "Shim: Could not create process" and was recorded as ok.
+    #
+    # $LASTEXITCODE is nulled first because it is SESSION state, not step state: a
+    # body made only of cmdlets leaves the PREVIOUS step's value in place, and
+    # checking that would blame this step for the last one's exit code. Null after
+    # the body means no native command ran, which is not a failure.
+    #
+    # Known limit: a body chaining several native commands (`scoop cleanup *; scoop
+    # cache rm *`) only reports the LAST one's code. Fixing that means splitting the
+    # step, not making this cleverer.
     function Step {
         param([string]$Label, [scriptblock]$Body)
         Write-Log "> $Label"
-        try { & $Body *>> $Log; Write-Log "  ok $Label" }
+        try {
+            $global:LASTEXITCODE = $null
+            & $Body *>> $Log
+            if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+                Write-Log "  FAIL $Label : exited $LASTEXITCODE  — continuing"
+            } else {
+                Write-Log "  ok $Label"
+            }
+        }
         catch { Write-Log "  FAIL $Label : $_  — continuing" }
     }
 
     # --- run a process with a timeout (for the headless nvim session) ---------
+    # Uses ProcessStartInfo rather than Start-Process, and the reason is the bug that
+    # made this whole step a no-op for its entire life.
+    #
+    # `Start-Process -ArgumentList @(...)` JOINS the array with spaces and does not
+    # quote the elements. So
+    #     @('--headless', '+Lazy! sync', '+silent! TSUpdateSync', ..., '+qa!')
+    # reached nvim as
+    #     --headless +Lazy! sync +silent! TSUpdateSync +silent! MasonUpdate +qa!
+    # and nvim read `sync`, `TSUpdateSync` and `MasonUpdate` as FILENAMES to open
+    # rather than as parts of the preceding +commands. It opened three empty buffers,
+    # hit +qa!, and exited 0 in 0.2s having synced nothing. Measured side by side on
+    # a real host: Start-Process 0.2s / 0 lines, ProcessStartInfo 5.9s / 398 lines.
+    # ProcessStartInfo.ArgumentList quotes each element individually, which is the
+    # whole difference.
+    #
+    # Reading the pipes directly also retires the old temp-file dance
+    # ("$Log.nvim.out"/".err"), which had its own failure: the output was appended
+    # with Add-Content while Step's `*>> $Log` held the same file open, so Windows
+    # refused it ("being used by another process") and — non-terminating — the step
+    # still said ok. Output is EMITTED here instead, and Step's existing redirect
+    # captures it with one handle on the log rather than two.
+    #
+    # Both pipes are read concurrently on purpose: a child that fills one while the
+    # parent blocks on the other deadlocks, and headless nvim writes plenty to both.
+    #
+    # $LASTEXITCODE is set from the child, so Step's exit-code check can see it —
+    # neither Start-Process -PassThru nor [Process]::Start sets it.
     function Invoke-WithTimeout {
         param([string]$File, [string[]]$ArgList, [int]$TimeoutSec)
-        $p = Start-Process -FilePath $File -ArgumentList $ArgList -NoNewWindow -PassThru `
-                -RedirectStandardOutput "$Log.nvim.out" -RedirectStandardError "$Log.nvim.err"
+        $psi = [System.Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName               = $File
+        foreach ($a in $ArgList) { [void]$psi.ArgumentList.Add($a) }
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError  = $true
+        $psi.UseShellExecute        = $false
+        $psi.CreateNoWindow         = $true
+
+        $p   = [System.Diagnostics.Process]::Start($psi)
+        $out = $p.StandardOutput.ReadToEndAsync()
+        $err = $p.StandardError.ReadToEndAsync()
         if (-not $p.WaitForExit($TimeoutSec * 1000)) {
-            try { $p.Kill() } catch { }
+            # Kill the whole tree: nvim spawns git/curl children of its own, and
+            # leaving those behind would keep the pipes open and hang the read.
+            try { $p.Kill($true) } catch { }
             throw "timed out after ${TimeoutSec}s"
         }
-        Get-Content "$Log.nvim.out","$Log.nvim.err" -ErrorAction SilentlyContinue | Add-Content $Log
-        Remove-Item "$Log.nvim.out","$Log.nvim.err" -ErrorAction SilentlyContinue
+        ($out.Result + $err.Result) -split "`r?`n" | Where-Object { $_ -ne '' }
+        $global:LASTEXITCODE = $p.ExitCode
     }
 
     Write-Log "=========== dotfiles-maint start ($([Environment]::MachineName)) ==========="
