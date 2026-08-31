@@ -13,7 +13,6 @@
 #               it logs one SKIPPED line. See docs/REMOTE-ACCESS.md.
 #    • mise:    plugin update + upgrade   (if installed)
 #    • neovim:  Lazy! sync / TSUpdate / MasonUpdate  (headless, timeout-guarded)
-#    • navi:    cheatsheet repo update
 #    • PowerShell modules: PSReadLine / Terminal-Icons / PSFzf / CompletionPredictor
 #
 #  winget is OPT-IN: `winget upgrade --all` can launch MSI installers that prompt
@@ -40,7 +39,7 @@ if ($Help) {
         '  junctions scoop just remade so an ssh session can traverse them (needs'
         '  elevation — logs one SKIPPED line otherwise; docs/REMOTE-ACCESS.md).'
         '  Then: mise update/upgrade; neovim Lazy/TS/Mason sync (headless,'
-        '  timeout-guarded); navi repo update; PowerShell modules.'
+        '  timeout-guarded); PowerShell modules.'
         ''
         'ENV KNOBS'
         '  MAINT_ENABLED=1          set 0 to make the run a no-op'
@@ -227,12 +226,19 @@ try {
         }
     }
 
-    # --- navi cheatsheet repos -----------------------------------------------
-    # `navi repo update` refreshes community cheatsheets. Silent - a network
-    # blip here should never interrupt the rest of maintenance.
-    if (Have navi) {
-        Step 'navi repo update' { navi repo update }
-    }
+    # --- navi: no step, deliberately -----------------------------------------
+    # There used to be a `navi repo update` step here. It never worked on any host:
+    # `navi repo` takes only add / browse / help, so the command exited 2 with
+    # "unrecognized subcommand 'update'" every single run. Nobody noticed because
+    # Step did not check exit codes and logged it ok — the same blind spot that hid
+    # the nvim step doing nothing.
+    #
+    # Removed rather than re-pointed at a working command, because there is no
+    # equivalent: navi has no "refresh my repos" verb, and updating imported
+    # cheatsheets means git-pulling each one under `navi info cheats-path` by hand.
+    # Add that back the day cheat repos are actually imported (`navi repo add`);
+    # until then a step that greps for a directory which does not exist is worth
+    # less than the line it occupies.
 
     # --- PowerShell modules ---------------------------------------------------
     # Refresh into the LOCAL (non-OneDrive) modules dir with Save-Module -Force —

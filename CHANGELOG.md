@@ -6,6 +6,29 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Removed
+
+- **The `navi repo update` maintenance step, which was never a real command.**
+  `navi repo` takes only `add` / `browse` / `help`, so the step exited 2 with
+  *"unrecognized subcommand 'update'"* on every run it has ever made — invisible
+  until the exit-code fix above made it reportable. Nothing is lost: navi has no
+  "refresh my repos" verb to re-point it at, and updating imported cheatsheets means
+  git-pulling each one under `navi info cheats-path` by hand. On this host that path
+  does not exist at all, so there was nothing to refresh either way. Worth adding
+  back the day cheat repos are actually imported (`navi repo add`).
+
+  Removed from all four places that named it — the runner, its file header, its
+  `-Help` block, and `TERMINAL_WORKFLOW_GUIDE.md` — with the step-documentation gate
+  in `tests/Maint.Tests.ps1` keeping those honest.
+
+  Separately, and on the host rather than in the repo: the scoop install of navi was
+  broken — `navi.exe` was absent from the app directory, leaving only `config.yaml`,
+  `install.json` and `manifest.json`, so the shim reported *"Could not create
+  process"*. Not a Redirection Guard problem; the junction traverses fine. A
+  reinstall of the same version (2.24.0, matching the bucket, and navi is unpinned)
+  restored it with the persisted `config.yaml` intact. Two independent faults were
+  stacked behind one silently-passing step.
+
 ### Fixed
 
 - **The nvim maintenance step had never done anything, and the log was built so it

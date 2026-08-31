@@ -39,7 +39,6 @@ BeforeDiscovery {
         'mise plugins update'                        = @('mise')
         'mise upgrade'                               = @('mise')
         'neovim: Lazy sync / TSUpdate / MasonUpdate' = @('neovim', 'Lazy')
-        'navi repo update'                           = @('navi')
         'module update: $m'                          = @('PowerShell modules')
         'winget upgrade --all'                       = @('winget')
     }
