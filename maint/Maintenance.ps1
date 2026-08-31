@@ -13,7 +13,6 @@
 #               it logs one SKIPPED line. See docs/REMOTE-ACCESS.md.
 #    • mise:    plugin update + upgrade   (if installed)
 #    • neovim:  Lazy! sync / TSUpdate / MasonUpdate  (headless, timeout-guarded)
-#    • navi:    cheatsheet repo update
 #    • PowerShell modules: PSReadLine / Terminal-Icons / PSFzf / CompletionPredictor
 #
 #  winget is OPT-IN: `winget upgrade --all` can launch MSI installers that prompt
@@ -40,7 +39,7 @@ if ($Help) {
         '  junctions scoop just remade so an ssh session can traverse them (needs'
         '  elevation — logs one SKIPPED line otherwise; docs/REMOTE-ACCESS.md).'
         '  Then: mise update/upgrade; neovim Lazy/TS/Mason sync (headless,'
-        '  timeout-guarded); navi repo update; PowerShell modules.'
+        '  timeout-guarded); PowerShell modules.'
         ''
         'ENV KNOBS'
         '  MAINT_ENABLED=1          set 0 to make the run a no-op'
@@ -55,6 +54,11 @@ if ($Help) {
 
 $ErrorActionPreference = 'Continue'
 . (Join-Path $PSScriptRoot '..\packages\modules.ps1')
+# Test-DotModuleUpToDate, for the module step below. Dot-sourced directly rather
+# than via the Dotfiles module: this runs under -NoProfile from a scheduled task,
+# where nothing has imported that module and PSModulePath may not even include it.
+# The file is pure and side-effect-free on load, which is what makes that safe.
+. (Join-Path $PSScriptRoot '..\powershell\Dotfiles\Modules.Helpers.ps1')
 
 # --- env knobs ----------------------------------------------------------------
 if (-not $env:MAINT_ENABLED)        { $env:MAINT_ENABLED = '1' }
@@ -86,24 +90,86 @@ try {
     }
 
     # --- labeled step that never aborts the script ----------------------------
+    # Two ways a step can fail, and both have to be caught or the log lies:
+    #
+    #   • it THROWS — a cmdlet with -ErrorAction Stop, or Invoke-WithTimeout's
+    #     timeout. Always caught.
+    #   • it EXITS NON-ZERO — a native command. PowerShell does not throw for these,
+    #     so every one of them used to be logged `ok`. Observed live: `navi repo
+    #     update` printed "Shim: Could not create process" and was recorded as ok.
+    #
+    # $LASTEXITCODE is nulled first because it is SESSION state, not step state: a
+    # body made only of cmdlets leaves the PREVIOUS step's value in place, and
+    # checking that would blame this step for the last one's exit code. Null after
+    # the body means no native command ran, which is not a failure.
+    #
+    # Known limit: a body chaining several native commands (`scoop cleanup *; scoop
+    # cache rm *`) only reports the LAST one's code. Fixing that means splitting the
+    # step, not making this cleverer.
     function Step {
         param([string]$Label, [scriptblock]$Body)
         Write-Log "> $Label"
-        try { & $Body *>> $Log; Write-Log "  ok $Label" }
+        try {
+            $global:LASTEXITCODE = $null
+            & $Body *>> $Log
+            if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+                Write-Log "  FAIL $Label : exited $LASTEXITCODE  — continuing"
+            } else {
+                Write-Log "  ok $Label"
+            }
+        }
         catch { Write-Log "  FAIL $Label : $_  — continuing" }
     }
 
     # --- run a process with a timeout (for the headless nvim session) ---------
+    # Uses ProcessStartInfo rather than Start-Process, and the reason is the bug that
+    # made this whole step a no-op for its entire life.
+    #
+    # `Start-Process -ArgumentList @(...)` JOINS the array with spaces and does not
+    # quote the elements. So
+    #     @('--headless', '+Lazy! sync', '+silent! TSUpdateSync', ..., '+qa!')
+    # reached nvim as
+    #     --headless +Lazy! sync +silent! TSUpdateSync +silent! MasonUpdate +qa!
+    # and nvim read `sync`, `TSUpdateSync` and `MasonUpdate` as FILENAMES to open
+    # rather than as parts of the preceding +commands. It opened three empty buffers,
+    # hit +qa!, and exited 0 in 0.2s having synced nothing. Measured side by side on
+    # a real host: Start-Process 0.2s / 0 lines, ProcessStartInfo 5.9s / 398 lines.
+    # ProcessStartInfo.ArgumentList quotes each element individually, which is the
+    # whole difference.
+    #
+    # Reading the pipes directly also retires the old temp-file dance
+    # ("$Log.nvim.out"/".err"), which had its own failure: the output was appended
+    # with Add-Content while Step's `*>> $Log` held the same file open, so Windows
+    # refused it ("being used by another process") and — non-terminating — the step
+    # still said ok. Output is EMITTED here instead, and Step's existing redirect
+    # captures it with one handle on the log rather than two.
+    #
+    # Both pipes are read concurrently on purpose: a child that fills one while the
+    # parent blocks on the other deadlocks, and headless nvim writes plenty to both.
+    #
+    # $LASTEXITCODE is set from the child, so Step's exit-code check can see it —
+    # neither Start-Process -PassThru nor [Process]::Start sets it.
     function Invoke-WithTimeout {
         param([string]$File, [string[]]$ArgList, [int]$TimeoutSec)
-        $p = Start-Process -FilePath $File -ArgumentList $ArgList -NoNewWindow -PassThru `
-                -RedirectStandardOutput "$Log.nvim.out" -RedirectStandardError "$Log.nvim.err"
+        $psi = [System.Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName               = $File
+        foreach ($a in $ArgList) { [void]$psi.ArgumentList.Add($a) }
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError  = $true
+        $psi.UseShellExecute        = $false
+        $psi.CreateNoWindow         = $true
+
+        $p   = [System.Diagnostics.Process]::Start($psi)
+        $out = $p.StandardOutput.ReadToEndAsync()
+        $err = $p.StandardError.ReadToEndAsync()
         if (-not $p.WaitForExit($TimeoutSec * 1000)) {
-            try { $p.Kill() } catch { }
+            # Kill the whole tree: nvim spawns git/curl children of its own, and
+            # leaving those behind would keep the pipes open and hang the read.
+            try { $p.Kill($true) } catch { }
             throw "timed out after ${TimeoutSec}s"
         }
-        Get-Content "$Log.nvim.out","$Log.nvim.err" -ErrorAction SilentlyContinue | Add-Content $Log
-        Remove-Item "$Log.nvim.out","$Log.nvim.err" -ErrorAction SilentlyContinue
+        ($out.Result + $err.Result) -split "`r?`n" | Where-Object { $_ -ne '' }
+        $global:LASTEXITCODE = $p.ExitCode
     }
 
     Write-Log "=========== dotfiles-maint start ($([Environment]::MachineName)) ==========="
@@ -165,12 +231,19 @@ try {
         }
     }
 
-    # --- navi cheatsheet repos -----------------------------------------------
-    # `navi repo update` refreshes community cheatsheets. Silent - a network
-    # blip here should never interrupt the rest of maintenance.
-    if (Have navi) {
-        Step 'navi repo update' { navi repo update }
-    }
+    # --- navi: no step, deliberately -----------------------------------------
+    # There used to be a `navi repo update` step here. It never worked on any host:
+    # `navi repo` takes only add / browse / help, so the command exited 2 with
+    # "unrecognized subcommand 'update'" every single run. Nobody noticed because
+    # Step did not check exit codes and logged it ok — the same blind spot that hid
+    # the nvim step doing nothing.
+    #
+    # Removed rather than re-pointed at a working command, because there is no
+    # equivalent: navi has no "refresh my repos" verb, and updating imported
+    # cheatsheets means git-pulling each one under `navi info cheats-path` by hand.
+    # Add that back the day cheat repos are actually imported (`navi repo add`);
+    # until then a step that greps for a directory which does not exist is worth
+    # less than the line it occupies.
 
     # --- PowerShell modules ---------------------------------------------------
     # Refresh into the LOCAL (non-OneDrive) modules dir with Save-Module -Force —
@@ -178,10 +251,35 @@ try {
     # modules off OneDrive (fast shell start) and sidesteps the old PSReadLine
     # special case: Save-Module just writes the latest Name\Version with no
     # Update-Module-vs-shipped-module friction.
+    # Only saved when the gallery actually has something NEWER. Save-Module -Force
+    # rewrites <Path>\<Name>\<Version> wholesale even when that exact version is
+    # already there, and for a module whose assemblies are mapped into a running
+    # PowerShell that overwrite cannot succeed — the files are locked and it fails
+    # with "Access to the path ... is denied". PSReadLine is loaded by EVERY session,
+    # so on any box with a shell open it failed every single run while being
+    # perfectly up to date. Measured here: all four managed modules already matched
+    # the gallery, so this step re-downloaded four modules a day to achieve nothing
+    # and failed on one of them.
+    #
+    # A genuinely new version lands in its OWN version directory and never touches
+    # the locked one, so the update path that matters is unaffected.
+    #
+    # Find-Module failing (offline, gallery down) falls THROUGH to Save-Module rather
+    # than skipping: an unknown latest version must not read as "up to date", or the
+    # step would go quiet on exactly the days it cannot check.
     $localModules = Join-Path $env:LOCALAPPDATA 'PowerShell\Modules'
     New-Item -ItemType Directory -Force -Path $localModules | Out-Null
     foreach ($m in $script:MaintModuleNames) {
-        Step "module update: $m" { Save-Module -Name $m -Path $localModules -Force -ErrorAction Stop }
+        Step "module update: $m" {
+            $installed = @(Get-ChildItem -LiteralPath (Join-Path $localModules $m) -Directory -Force -ErrorAction SilentlyContinue |
+                ForEach-Object Name)
+            $latest = try { [string](Find-Module -Name $m -ErrorAction Stop).Version } catch { '' }
+            if (Test-DotModuleUpToDate -InstalledVersions $installed -LatestVersion $latest) {
+                "module $m already at $latest — nothing to save"
+                return
+            }
+            Save-Module -Name $m -Path $localModules -Force -ErrorAction Stop
+        }
     }
 
     # --- winget (OPT-IN — see header) -----------------------------------------

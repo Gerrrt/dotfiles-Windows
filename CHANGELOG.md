@@ -6,7 +6,107 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **The module step no longer re-downloads modules it already has**, which is what
+  had `module update: PSReadLine` failing on every run. `Save-Module -Force`
+  rewrites `<Path>\<Name>\<Version>` **wholesale even when that exact version is
+  already on disk**, and for a module whose assemblies are mapped into a running
+  PowerShell that overwrite cannot succeed — the files are locked and it fails with
+  *"Access to the path … is denied"*. PSReadLine is loaded by **every** PowerShell
+  session, so on any box with a shell open it failed every time. Confirmed on this
+  host rather than guessed: `Microsoft.PowerShell.PSReadLine.dll` and its Polyfiller
+  were held open, with six other `pwsh` processes running.
+
+  The module was not out of date. Neither were the other three — all four already
+  matched the gallery exactly, so the step was re-downloading four modules a day to
+  achieve nothing, and failing on one of them for the privilege. It now looks up the
+  gallery version and saves only when there is something newer.
+
+  This removes the failure rather than hiding it: a genuinely new version installs
+  into its **own** version directory and never touches the locked one, so the update
+  path that matters is untouched. `Find-Module` failing (offline, gallery down)
+  deliberately falls *through* to `Save-Module` rather than skipping — an unknown
+  latest version must not read as "up to date", or the step would go quiet on
+  exactly the days it cannot check.
+
+  `Test-DotModuleUpToDate` (`powershell/Dotfiles/Modules.Helpers.ps1`) is the pure
+  decision, conservative by construction: nothing installed, an unparseable version
+  on either side, or an unknown gallery version all return "save anyway".
+
+### Removed
+
+- **The `navi repo update` maintenance step, which was never a real command.**
+  `navi repo` takes only `add` / `browse` / `help`, so the step exited 2 with
+  *"unrecognized subcommand 'update'"* on every run it has ever made — invisible
+  until the exit-code fix above made it reportable. Nothing is lost: navi has no
+  "refresh my repos" verb to re-point it at, and updating imported cheatsheets means
+  git-pulling each one under `navi info cheats-path` by hand. On this host that path
+  does not exist at all, so there was nothing to refresh either way. Worth adding
+  back the day cheat repos are actually imported (`navi repo add`).
+
+  Removed from all four places that named it — the runner, its file header, its
+  `-Help` block, and `TERMINAL_WORKFLOW_GUIDE.md` — with the step-documentation gate
+  in `tests/Maint.Tests.ps1` keeping those honest.
+
+  Separately, and on the host rather than in the repo: the scoop install of navi was
+  broken — `navi.exe` was absent from the app directory, leaving only `config.yaml`,
+  `install.json` and `manifest.json`, so the shim reported *"Could not create
+  process"*. Not a Redirection Guard problem; the junction traverses fine. A
+  reinstall of the same version (2.24.0, matching the bucket, and navi is unpinned)
+  restored it with the persisted `config.yaml` intact. Two independent faults were
+  stacked behind one silently-passing step.
+
 ### Fixed
+
+- **The nvim maintenance step had never done anything, and the log was built so it
+  could not say so.** Found by reading `maint.log` to check whether the nvim wiring
+  fix had taken effect, and discovering the log could never have answered that
+  question. Three compounding bugs in `maint/Maintenance.ps1`, each hiding the next:
+
+  **1. The arguments were mangled.** `Start-Process -ArgumentList @(...)` JOINS the
+  array with spaces and does not quote the elements, so
+
+  ```
+  @('--headless', '+Lazy! sync', '+silent! TSUpdateSync', '+silent! MasonUpdate', '+qa!')
+  ```
+
+  reached nvim as `--headless +Lazy! sync +silent! TSUpdateSync …`. nvim read
+  `sync`, `TSUpdateSync` and `MasonUpdate` as **filenames** rather than as parts of
+  the preceding `+command`, opened three empty buffers, hit `+qa!` and exited 0.
+  Measured side by side on a real host: `Start-Process` 0.2s / **0 lines**,
+  `ProcessStartInfo.ArgumentList` (which quotes each element) 5.9s / **398 lines**.
+  `Invoke-WithTimeout` now uses `ProcessStartInfo`, reading both pipes concurrently
+  so a child that fills one while the parent blocks on the other cannot deadlock.
+
+  **2. The output was discarded.** `Step` runs its body under `& $Body *>> $Log`,
+  which holds the log open; `Invoke-WithTimeout` then appended the child's output to
+  that same path with `Add-Content` and Windows refused — *"The process cannot access
+  the file … because it is being used by another process"*. Non-terminating, so
+  nothing failed. Reading the pipes directly retires the temp-file dance entirely and
+  the output is **emitted**, letting `Step`'s existing redirect capture it with one
+  handle on the log instead of two.
+
+  **3. Failure was unreportable.** `Step` only ever caught *exceptions*, and a native
+  command that exits non-zero does not throw in PowerShell — so every one of them was
+  graded `ok`. Live example from the same run: `navi repo update` printed `Shim:
+  Could not create process` and was recorded as a success. `Step` now checks
+  `$LASTEXITCODE`, and `Invoke-WithTimeout` surfaces its child's code into it
+  (neither `Start-Process -PassThru` nor `[Process]::Start` sets it).
+
+  `$LASTEXITCODE` is nulled before each body on purpose: it is session state, not
+  step state, so a cmdlet-only step would otherwise inherit the previous step's code
+  and be blamed for it. Known limit, stated in the code: a body chaining several
+  native commands only reports the last one's code.
+
+  After the fix, on this host: the nvim step runs ~6s and lands **398 lines** of real
+  `Lazy! sync` output in the log, and `navi repo update` is correctly reported as
+  `FAIL … exited 1` — a genuinely broken scoop shim that had been passing silently.
+
+  The tests lift `Step` and `Invoke-WithTimeout` out of the AST and execute them —
+  both are nested inside the runner's lock block and cannot be dot-sourced without
+  triggering a real maintenance pass. Verified to be worth having: 6 of them fail
+  against the pre-fix runner.
 
 - **psmux, jj and mise were all invisible over ssh too.** The follow-up #225 named:
   every remaining config this repo wired was a symlink into the repo, and under

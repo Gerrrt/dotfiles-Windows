@@ -518,7 +518,7 @@ sync refresh; `DOTFILES_UPDATE_CHECK=0` disables it. Scoop/winget convenience ve
   `%LOCALAPPDATA%\dotfiles\maint\maint.log` (rotated). Steps (all user-space): scoop update/cleanup,
   re-creating scoop's junctions admin-trusted (a no-op unless elevated — see below),
   `mise plugins update` + `mise upgrade`, headless neovim `Lazy! sync`/`TSUpdateSync`/`MasonUpdate`
-  (timeout-guarded), `navi repo update`, `Save-Module` for the pinned PS modules. **winget upgrade
+  (timeout-guarded), `Save-Module` for the pinned PS modules. **winget upgrade
   is opt-in** (`MAINT_WINGET_UPGRADE=1`) since it can launch MSI installers. Knobs: `MAINT_ENABLED`,
   `MAINT_NVIM_TIMEOUT`.
 - **`os/40-maint.ps1`** — the control surface (Task Scheduler is the systemd/cron analog):
