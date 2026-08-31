@@ -69,3 +69,49 @@ Describe 'Get-DotModulePrunePlan' {
         @(Get-DotModulePrunePlan -Installed @( (Mod 'A' '1.0.0') ) -ManagedNames @()).Count | Should -Be 0
     }
 }
+
+# ============================================================================
+#  Test-DotModuleUpToDate — is there anything to save?
+#
+#  The maintenance runner called Save-Module -Force unconditionally. That rewrites
+#  <Path>\<Name>\<Version> wholesale even when the exact version is already there,
+#  and for a module whose assemblies are mapped into a running PowerShell the
+#  overwrite cannot succeed — the files are locked. PSReadLine is loaded by EVERY
+#  session, so on any box with a shell open it failed every run while being
+#  perfectly up to date.
+# ============================================================================
+Describe 'Test-DotModuleUpToDate' {
+    It 'is true when the installed version already matches the gallery' {
+        # The PSReadLine case exactly: installed 2.4.5, gallery 2.4.5, and the
+        # overwrite could only ever fail.
+        Test-DotModuleUpToDate -InstalledVersions @('2.4.5') -LatestVersion '2.4.5' | Should -BeTrue
+    }
+    It 'is false when the gallery has something newer' {
+        Test-DotModuleUpToDate -InstalledVersions @('2.4.5') -LatestVersion '2.5.0' | Should -BeFalse
+    }
+    It 'compares against the HIGHEST installed version, not the first found' {
+        # A box mid-prune carries several versions; the newest is what counts.
+        Test-DotModuleUpToDate -InstalledVersions @('2.7.10', '2.7.12') -LatestVersion '2.7.12' | Should -BeTrue
+        Test-DotModuleUpToDate -InstalledVersions @('2.7.12', '2.7.10') -LatestVersion '2.7.12' | Should -BeTrue
+    }
+    It 'is true when the installed version is NEWER than the gallery' {
+        # A prerelease, or a gallery blip. Downgrading is not this step's job.
+        Test-DotModuleUpToDate -InstalledVersions @('3.0.0') -LatestVersion '2.4.5' | Should -BeTrue
+    }
+    It 'is false with nothing installed, so a first install still happens' {
+        Test-DotModuleUpToDate -InstalledVersions @()   -LatestVersion '2.4.5' | Should -BeFalse
+        Test-DotModuleUpToDate -InstalledVersions $null -LatestVersion '2.4.5' | Should -BeFalse
+    }
+    It 'is false when the gallery version is unknown, so an offline run still tries' {
+        # Find-Module failing must not read as "up to date", or the step goes quiet
+        # on exactly the days it cannot check.
+        Test-DotModuleUpToDate -InstalledVersions @('2.4.5') -LatestVersion ''  | Should -BeFalse
+        Test-DotModuleUpToDate -InstalledVersions @('2.4.5') -LatestVersion 'not-a-version' | Should -BeFalse
+    }
+    It 'is false when no installed version parses, rather than guessing an order' {
+        Test-DotModuleUpToDate -InstalledVersions @('2.4.5-beta1') -LatestVersion '2.4.5' | Should -BeFalse
+    }
+    It 'ignores unparseable versions alongside a good one' {
+        Test-DotModuleUpToDate -InstalledVersions @('junk', '2.4.5') -LatestVersion '2.4.5' | Should -BeTrue
+    }
+}

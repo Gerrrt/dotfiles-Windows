@@ -6,6 +6,34 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **The module step no longer re-downloads modules it already has**, which is what
+  had `module update: PSReadLine` failing on every run. `Save-Module -Force`
+  rewrites `<Path>\<Name>\<Version>` **wholesale even when that exact version is
+  already on disk**, and for a module whose assemblies are mapped into a running
+  PowerShell that overwrite cannot succeed — the files are locked and it fails with
+  *"Access to the path … is denied"*. PSReadLine is loaded by **every** PowerShell
+  session, so on any box with a shell open it failed every time. Confirmed on this
+  host rather than guessed: `Microsoft.PowerShell.PSReadLine.dll` and its Polyfiller
+  were held open, with six other `pwsh` processes running.
+
+  The module was not out of date. Neither were the other three — all four already
+  matched the gallery exactly, so the step was re-downloading four modules a day to
+  achieve nothing, and failing on one of them for the privilege. It now looks up the
+  gallery version and saves only when there is something newer.
+
+  This removes the failure rather than hiding it: a genuinely new version installs
+  into its **own** version directory and never touches the locked one, so the update
+  path that matters is untouched. `Find-Module` failing (offline, gallery down)
+  deliberately falls *through* to `Save-Module` rather than skipping — an unknown
+  latest version must not read as "up to date", or the step would go quiet on
+  exactly the days it cannot check.
+
+  `Test-DotModuleUpToDate` (`powershell/Dotfiles/Modules.Helpers.ps1`) is the pure
+  decision, conservative by construction: nothing installed, an unparseable version
+  on either side, or an unknown gallery version all return "save anyway".
+
 ### Removed
 
 - **The `navi repo update` maintenance step, which was never a real command.**

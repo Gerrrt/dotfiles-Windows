@@ -54,6 +54,11 @@ if ($Help) {
 
 $ErrorActionPreference = 'Continue'
 . (Join-Path $PSScriptRoot '..\packages\modules.ps1')
+# Test-DotModuleUpToDate, for the module step below. Dot-sourced directly rather
+# than via the Dotfiles module: this runs under -NoProfile from a scheduled task,
+# where nothing has imported that module and PSModulePath may not even include it.
+# The file is pure and side-effect-free on load, which is what makes that safe.
+. (Join-Path $PSScriptRoot '..\powershell\Dotfiles\Modules.Helpers.ps1')
 
 # --- env knobs ----------------------------------------------------------------
 if (-not $env:MAINT_ENABLED)        { $env:MAINT_ENABLED = '1' }
@@ -246,10 +251,35 @@ try {
     # modules off OneDrive (fast shell start) and sidesteps the old PSReadLine
     # special case: Save-Module just writes the latest Name\Version with no
     # Update-Module-vs-shipped-module friction.
+    # Only saved when the gallery actually has something NEWER. Save-Module -Force
+    # rewrites <Path>\<Name>\<Version> wholesale even when that exact version is
+    # already there, and for a module whose assemblies are mapped into a running
+    # PowerShell that overwrite cannot succeed — the files are locked and it fails
+    # with "Access to the path ... is denied". PSReadLine is loaded by EVERY session,
+    # so on any box with a shell open it failed every single run while being
+    # perfectly up to date. Measured here: all four managed modules already matched
+    # the gallery, so this step re-downloaded four modules a day to achieve nothing
+    # and failed on one of them.
+    #
+    # A genuinely new version lands in its OWN version directory and never touches
+    # the locked one, so the update path that matters is unaffected.
+    #
+    # Find-Module failing (offline, gallery down) falls THROUGH to Save-Module rather
+    # than skipping: an unknown latest version must not read as "up to date", or the
+    # step would go quiet on exactly the days it cannot check.
     $localModules = Join-Path $env:LOCALAPPDATA 'PowerShell\Modules'
     New-Item -ItemType Directory -Force -Path $localModules | Out-Null
     foreach ($m in $script:MaintModuleNames) {
-        Step "module update: $m" { Save-Module -Name $m -Path $localModules -Force -ErrorAction Stop }
+        Step "module update: $m" {
+            $installed = @(Get-ChildItem -LiteralPath (Join-Path $localModules $m) -Directory -Force -ErrorAction SilentlyContinue |
+                ForEach-Object Name)
+            $latest = try { [string](Find-Module -Name $m -ErrorAction Stop).Version } catch { '' }
+            if (Test-DotModuleUpToDate -InstalledVersions $installed -LatestVersion $latest) {
+                "module $m already at $latest — nothing to save"
+                return
+            }
+            Save-Module -Name $m -Path $localModules -Force -ErrorAction Stop
+        }
     }
 
     # --- winget (OPT-IN — see header) -----------------------------------------
