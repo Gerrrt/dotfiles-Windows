@@ -150,11 +150,12 @@ function Get-DotRemoteWiringResult {
         return (New-DoctorResult $label 'warn' 'not wired' 'run install.ps1 -SkipPackages')
     }
     if (-not $IsReparsePoint) {
-        # A real file — a stub, or the user's own config. Either way nothing has to
-        # be traversed, so an ssh session reads it.
-        return (New-DoctorResult $label 'ok' 'real file — resolves over ssh')
+        # A real file or directory — a stub, a forwarder directory, or the user's own
+        # config. Either way nothing has to be traversed, so an ssh session reads it.
+        $shape = if ($Kind -eq 'StubDir') { 'real directory' } else { 'real file' }
+        return (New-DoctorResult $label 'ok' "$shape — resolves over ssh")
     }
-    if ($Kind -eq 'Stub') {
+    if ($Kind -in 'Stub', 'StubDir') {
         # Planned as a stub but still a symlink: install.ps1 has not been re-run since
         # the plan changed. Broken now if enforced, and broken later if not.
         $detail = if ($Enforced) { 'symlinked — will not resolve over ssh' }

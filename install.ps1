@@ -435,6 +435,93 @@ function Clear-StubParent {
     return 'retired'
 }
 
+# Write a Kind='StubDir' row: a REAL directory holding one forwarder per file in
+# $Target (Get-DotfilesForwarderContent). The directory answer to the same problem
+# Write-StubItem solves for a file — psmux's scripts/ is a directory of pwsh popup
+# helpers, and a directory has no include mechanism to stub.
+#
+# Wiring the directory rather than rewriting psmux.conf's eight bind lines is
+# deliberate: those lines carry documented latency and quoting constraints, and they
+# keep working untouched because ~/.config/psmux/scripts is still the path they name
+# — it is simply real now.
+#
+# The tradeoff, and the reason Test-StubDirIntoRepo checks COVERAGE rather than mere
+# existence: a forwarder directory does not track the repo by itself. A script added
+# upstream has no forwarder until the next install, so the predicate reports that as
+# not-wired and both this function and dotfiles-doctor act on it.
+function Write-StubDirItem {
+    param([string]$Name, [string]$Target, [string]$Link)
+
+    if (-not (Test-Path -LiteralPath $Target -PathType Container)) {
+        Write-DotWarn "No such directory to forward for '$Name': $Target" 'Please report this.'
+        $script:LinkStats.skipped++
+        return
+    }
+
+    # A previous install left this as a directory SYMLINK into the repo. Retire it
+    # first, exactly as Clear-StubParent does for a stub's parent: until it is gone,
+    # every write below lands inside the repo instead of in %USERPROFILE%.
+    $item = Get-Item -LiteralPath $Link -Force -ErrorAction SilentlyContinue
+    if ($item -and $item.LinkType) {
+        if ($script:DryRun) {
+            Write-DotHost "  would retire $Link (a link into the repo)" -Color DarkYellow
+        } elseif (-not (Confirm-Overwrite $Link)) {
+            Write-Host "  skip    $Link (kept existing, by request)" -ForegroundColor DarkGray
+            $script:LinkStats.skipped++
+            return
+        } else {
+            $backup = "$Link.$(Get-Date -Format 'yyyyMMdd-HHmmss').bak"
+            Move-Item -LiteralPath $Link -Destination $backup -Force -ErrorAction Stop
+            Write-DotHost "  retired $Link (a link into the repo) -> $backup" -Color DarkYellow
+            $script:LinkStats.backedup++
+            $item = $null
+        }
+    }
+
+    if ((-not $script:DryRun) -and (Test-StubDirIntoRepo -Link $Link -Target $Target -Root $RepoRoot)) {
+        Write-Host "  ok      $Link (already wired)" -ForegroundColor DarkGray
+        $script:LinkStats.skipped++
+        return
+    }
+
+    $sources = @(Get-ChildItem -LiteralPath $Target -File)
+    if ($script:DryRun) {
+        Write-DotHost "  would write $($sources.Count) forwarder(s) in  $Link" -Color Cyan
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $Link)) { New-Item -ItemType Directory -Force -Path $Link | Out-Null }
+
+    foreach ($src in $sources) {
+        $forwarder = Join-Path $Link $src.Name
+        # Back up anything of the user's own that is sitting where a forwarder goes;
+        # our own forwarder is simply rewritten, so re-installs don't pile up .bak files.
+        if ((Test-Path -LiteralPath $forwarder) -and -not (Test-StubIntoRepo -Link $forwarder -Root $RepoRoot)) {
+            if (-not (Confirm-Overwrite $forwarder)) {
+                Write-Host "  skip    $forwarder (kept existing, by request)" -ForegroundColor DarkGray
+                continue
+            }
+            $bak = "$forwarder.$(Get-Date -Format 'yyyyMMdd-HHmmss').bak"
+            Move-Item -LiteralPath $forwarder -Destination $bak -Force
+            Write-DotHost "  backed up existing -> $bak" -Color DarkYellow
+            $script:LinkStats.backedup++
+        }
+        Set-Content -LiteralPath $forwarder -Value (Get-DotfilesForwarderContent -Target $src.FullName) -Encoding utf8 -ErrorAction Stop
+    }
+
+    # Sweep forwarders whose source is gone, so a script deleted upstream doesn't
+    # keep a dead popup bound. Only ours — never a file the user put here.
+    foreach ($stale in @(Get-ChildItem -LiteralPath $Link -File -ErrorAction SilentlyContinue)) {
+        if ($sources.Name -contains $stale.Name) { continue }
+        if (-not (Test-StubIntoRepo -Link $stale.FullName -Root $RepoRoot)) { continue }
+        Remove-Item -LiteralPath $stale.FullName -Force -ErrorAction SilentlyContinue
+        Write-DotHost "  removed stale forwarder $($stale.Name)" -Color DarkYellow
+    }
+
+    Write-DotHost "  stubbed $Link ($($sources.Count) forwarders)" -Color Green
+    $script:LinkStats.stubbed++
+}
+
 function Write-StubItem {
     param([string]$Name, [string]$Target, [string]$Link, [string]$LegacyLink)
 
@@ -614,14 +701,23 @@ if (Test-Path (Join-Path $RepoRoot '.git')) {
     }
 }
 
-# --- 1. persistent env var ----------------------------------------------------
-Write-Step 'Setting DOTFILES_WIN'
-if ($script:DryRun) {
-    Write-DotHost "  would set DOTFILES_WIN = $RepoRoot (User)" -Color Cyan
-} else {
-    [Environment]::SetEnvironmentVariable('DOTFILES_WIN', $RepoRoot, 'User')
-    $env:DOTFILES_WIN = $RepoRoot
-    Write-Host "  DOTFILES_WIN = $RepoRoot" -ForegroundColor DarkGray
+# --- 1. persistent env vars ---------------------------------------------------
+# User scope, so they reach every process on the box — an ssh session gets the user's
+# environment from the registry, and so does a scheduled task. For JJ_CONFIG and
+# MISE_GLOBAL_CONFIG_FILE that is not a convenience but the entire wiring mechanism:
+# both configs are TOML, which has no include directive, so there is nothing to stub
+# and a symlink is unreadable over ssh. See Get-DotfilesEnvPlan in core/05-lib.ps1.
+Write-Step 'Setting environment variables'
+foreach ($var in (Get-DotfilesEnvPlan -RepoRoot $RepoRoot)) {
+    if ($script:DryRun) {
+        Write-DotHost "  would set $($var.Name) = $($var.Value) (User)" -Color Cyan
+    } else {
+        [Environment]::SetEnvironmentVariable($var.Name, $var.Value, 'User')
+        # Also set it in THIS process, so the rest of the run (and a shell the user
+        # keeps open) sees it without waiting for a new environment block.
+        Set-Item -LiteralPath "Env:$($var.Name)" -Value $var.Value
+        Write-Host "  $($var.Name) = $($var.Value)" -ForegroundColor DarkGray
+    }
 }
 
 # --- 2. packages --------------------------------------------------------------
@@ -655,11 +751,29 @@ foreach ($row in (Get-DotfilesLinkPlan -RepoRoot $RepoRoot)) {
     # Kind decides HOW: a stub is a real file that includes the repo copy, because a
     # symlink is unreadable from an ssh session (Redirection Guard — see
     # docs/REMOTE-ACCESS.md). Everything else is linked exactly as before.
-    if ($row.Kind -eq 'Stub') { Write-StubItem -Name $row.Name -Target $row.Target -Link $row.Link -LegacyLink $row.LegacyLink }
-    else                      { Link-Item -Target $row.Target -Link $row.Link }
+    if     ($row.Kind -eq 'Stub')    { Write-StubItem -Name $row.Name -Target $row.Target -Link $row.Link -LegacyLink $row.LegacyLink }
+    elseif ($row.Kind -eq 'StubDir') { Write-StubDirItem -Name $row.Name -Target $row.Target -Link $row.Link }
+    else                             { Link-Item -Target $row.Target -Link $row.Link }
     if ($row.Name -eq 'PowerShell profile') {
         Write-Host "  (profile target: $($row.Link))" -ForegroundColor DarkGray
     }
+}
+
+# Rows this repo used to wire and no longer does (jj, mise — now pointed at the repo
+# by env var instead). A box installed before that change still has the old symlink
+# sitting at the conventional path, inert but misleading: the tool does not read it
+# any more, so anyone who edits it is editing nothing. Retire ours; never touch a file
+# that isn't.
+foreach ($old in (Get-DotfilesRetiredLinkPlan -RepoRoot $RepoRoot)) {
+    if (-not (Test-SymlinkCurrent -Link $old.Link -Target $old.Target)) { continue }
+    if ($script:DryRun) {
+        Write-DotHost "  would retire $($old.Link) (superseded by $($old.Reason))" -Color DarkYellow
+        continue
+    }
+    $backup = "$($old.Link).$(Get-Date -Format 'yyyyMMdd-HHmmss').bak"
+    Move-Item -LiteralPath $old.Link -Destination $backup -Force -ErrorAction SilentlyContinue
+    Write-DotHost "  retired $($old.Link) (superseded by $($old.Reason)) -> $backup" -Color DarkYellow
+    $script:LinkStats.backedup++
 }
 $wtLinked = 0
 foreach ($row in $wtRows) {

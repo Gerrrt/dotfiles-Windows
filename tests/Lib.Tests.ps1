@@ -432,20 +432,19 @@ Describe 'Get-DotfilesLinkPlan' {
     It 'covers the full family of configs (parity with the installer)' {
         $links = (Get-DotfilesLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -LocalAppData 'L:' -Documents 'D:').Link -join ';'
         foreach ($needle in 'profile.ps1', 'nvim', '.gitconfig', '.gitignore_global', 'ssh\config',
-                            'psmux.conf', 'psmux.reset.conf', 'psmux\scripts', 'settings.json',
-                            '.config\mise\config.toml') {
+                            'psmux.conf', 'psmux.reset.conf', 'psmux\scripts', 'settings.json') {
             $links | Should -Match ([regex]::Escape($needle))
         }
     }
-    It 'links mise config to the XDG-style path mise reads on Windows' {
-        # mise reads ~/.config/mise/config.toml on Windows (NOT %APPDATA%), so the
-        # link must land there or the node pin silently never applies.
-        $plan = Get-DotfilesLinkPlan -RepoRoot 'R:\repo' -HomeDir 'H:\me' -LocalAppData 'L:' -Documents 'D:'
-        $mise = $plan | Where-Object Name -eq 'mise config'
-        $mise                  | Should -Not -BeNullOrEmpty
-        $mise.Link             | Should -Be 'H:\me\.config\mise\config.toml'
-        $mise.Target           | Should -Be 'R:\repo\mise\config.toml'
-        $mise.ParentMustExist  | Should -BeFalse
+    It 'no longer wires jj or mise as links - they are env-var rows now' {
+        # Both are TOML, which has no include directive: nothing to stub, and a symlink
+        # is unreadable over ssh. Get-DotfilesEnvPlan owns them instead. A row
+        # reappearing here would silently re-create the broken shape.
+        $plan = Get-DotfilesLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -LocalAppData 'L:' -RoamingAppData 'A:' -Documents 'D:'
+        $plan.Name | Should -Not -Contain 'jj config'
+        $plan.Name | Should -Not -Contain 'mise config'
+        ($plan.Link -join ';') | Should -Not -Match ([regex]::Escape('mise'))
+        ($plan.Link -join ';') | Should -Not -Match ([regex]::Escape('jj'))
     }
     It 'flags only the Windows Terminal settings variants as ParentMustExist' {
         # WT keeps settings.json in a per-build location (packaged Store, unpackaged/
@@ -462,10 +461,10 @@ Describe 'Get-DotfilesLinkPlan' {
             $n | Should -BeLike 'Windows Terminal settings*'
         }
     }
-    It 'stubs exactly the four configs that have to survive an ssh session' {
+    It 'stubs exactly the six configs that have to survive an ssh session' {
         # A symlink is unreadable from an ssh session (Redirection Guard, inherited by
-        # sshd from the Windows service lineage - docs/REMOTE-ACCESS.md), so these four
-        # are wired as real files that include the repo copy. If this list grows, the
+        # sshd from the Windows service lineage - docs/REMOTE-ACCESS.md), so these are
+        # wired as real files that include the repo copy. If this list grows, the
         # matching arm in Get-DotfilesStubContent must grow with it, or install.ps1
         # falls back to a symlink and the ssh breakage comes straight back.
         $plan = Get-DotfilesLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -LocalAppData 'L:' -Documents 'D:'
@@ -474,12 +473,21 @@ Describe 'Get-DotfilesLinkPlan' {
             'nvim config'
             '.gitconfig'
             'ssh config'
+            'psmux.conf'
+            'psmux.reset.conf'
         )
+    }
+    It 'uses StubDir only for psmux scripts - the one DIRECTORY with no include form' {
+        $plan = Get-DotfilesLinkPlan -RepoRoot 'R:\repo' -HomeDir 'H:\me' -LocalAppData 'L:' -Documents 'D:'
+        $dir  = @($plan | Where-Object Kind -eq 'StubDir')
+        $dir.Name   | Should -Be @('psmux scripts')
+        $dir.Link   | Should -Be @('H:\me\.config\psmux\scripts')
+        $dir.Target | Should -Be @('R:\repo\psmux\scripts')
     }
     It 'gives every other row Kind=Symlink (no row is left without a Kind)' {
         $plan = Get-DotfilesLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -LocalAppData 'L:' -Documents 'D:'
-        foreach ($row in $plan) { $row.Kind | Should -BeIn @('Stub', 'Symlink') }
-        @($plan | Where-Object Kind -eq 'Symlink').Count | Should -Be ($plan.Count - 4)
+        foreach ($row in $plan) { $row.Kind | Should -BeIn @('Stub', 'StubDir', 'Symlink') }
+        @($plan | Where-Object Kind -eq 'Symlink').Count | Should -Be ($plan.Count - 7)
     }
     It 'wires nvim as init.lua INSIDE the config dir, not the dir itself' {
         # The reparse point that broke nvim over ssh was on %LOCALAPPDATA%\nvim, the
@@ -509,10 +517,98 @@ Describe 'Get-DotfilesLinkPlan' {
     }
 }
 
+Describe 'Get-DotfilesEnvPlan' {
+    It 'points jj and mise at the repo, and carries DOTFILES_WIN' {
+        $env = Get-DotfilesEnvPlan -RepoRoot 'R:\repo'
+        ($env | Where-Object Name -eq 'DOTFILES_WIN').Value            | Should -Be 'R:\repo'
+        ($env | Where-Object Name -eq 'JJ_CONFIG').Value               | Should -Be 'R:\repo\jj\config.toml'
+        ($env | Where-Object Name -eq 'MISE_GLOBAL_CONFIG_FILE').Value | Should -Be 'R:\repo\mise\config.toml'
+    }
+    It 'uses the variable names the installed tools actually read' {
+        # Verified on a real host: without JJ_CONFIG, `jj config get ui.default-command`
+        # answers "Value not found"; without MISE_GLOBAL_CONFIG_FILE, `mise config ls`
+        # outside a project lists nothing. A typo here is silent - the tool just falls
+        # back to its own defaults and nothing errors.
+        @(Get-DotfilesEnvPlan -RepoRoot 'R:').Name | Should -Be @(
+            'DOTFILES_WIN', 'JJ_CONFIG', 'MISE_GLOBAL_CONFIG_FILE'
+        )
+    }
+    It 'builds every value from the injected root, never from the ambient one' {
+        foreach ($v in (Get-DotfilesEnvPlan -RepoRoot 'Q:\elsewhere')) {
+            $v.Value | Should -BeLike 'Q:\elsewhere*'
+        }
+    }
+}
+
+Describe 'Get-DotfilesRetiredLinkPlan' {
+    It 'names the paths jj and mise used to be wired at' {
+        $old = Get-DotfilesRetiredLinkPlan -RepoRoot 'R:\repo' -HomeDir 'H:\me' -RoamingAppData 'A:\roam'
+        ($old | Where-Object Name -eq 'jj config').Link   | Should -Be 'A:\roam\jj\config.toml'
+        ($old | Where-Object Name -eq 'mise config').Link | Should -Be 'H:\me\.config\mise\config.toml'
+    }
+    It 'carries the Target, so a caller can identify OUR link exactly' {
+        # Identifying by path alone would delete a same-named link belonging to another
+        # checkout. Test-SymlinkCurrent against this Target is what makes it precise.
+        $old = Get-DotfilesRetiredLinkPlan -RepoRoot 'R:\repo' -HomeDir 'H:' -RoamingAppData 'A:'
+        ($old | Where-Object Name -eq 'jj config').Target   | Should -Be 'R:\repo\jj\config.toml'
+        ($old | Where-Object Name -eq 'mise config').Target | Should -Be 'R:\repo\mise\config.toml'
+    }
+    It 'names the env var that superseded each one, for the doctor hint' {
+        $old = Get-DotfilesRetiredLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -RoamingAppData 'A:'
+        ($old | Where-Object Name -eq 'jj config').Reason   | Should -Be 'JJ_CONFIG'
+        ($old | Where-Object Name -eq 'mise config').Reason | Should -Be 'MISE_GLOBAL_CONFIG_FILE'
+    }
+    It 'matches the paths the link plan no longer produces' {
+        # The retired list and the live plan must not overlap, or install would wire a
+        # path and then immediately retire it.
+        $plan = Get-DotfilesLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -LocalAppData 'L:' -RoamingAppData 'A:' -Documents 'D:'
+        $old  = Get-DotfilesRetiredLinkPlan -RepoRoot 'R:' -HomeDir 'H:' -RoamingAppData 'A:'
+        foreach ($link in $old.Link) { $plan.Link | Should -Not -Contain $link }
+    }
+}
+
+Describe 'Get-DotfilesForwarderContent' {
+    It 'invokes the repo copy and forwards arguments' {
+        $c = Get-DotfilesForwarderContent -Target 'R:\repo\psmux\scripts\psmux-menu.ps1'
+        $c | Should -Match ([regex]::Escape("& 'R:\repo\psmux\scripts\psmux-menu.ps1' @args"))
+    }
+    It 'uses & rather than dot-sourcing, so $PSScriptRoot stays on the repo copy' {
+        # These are standalone popup scripts; dot-sourcing would run them in the
+        # forwarder's scope and point $PSScriptRoot at ~/.config, breaking any script
+        # that resolves a sibling.
+        $c = Get-DotfilesForwarderContent -Target 'R:\repo\psmux\scripts\x.ps1'
+        $c | Should -Not -Match '^\s*\.\s+'
+    }
+    It 'single-quotes the path and doubles embedded quotes' {
+        # A repo path containing a quote or a $ must be taken literally, not expanded.
+        $c = Get-DotfilesForwarderContent -Target "R:\o'brien\scripts\x.ps1"
+        $c | Should -Match ([regex]::Escape("& 'R:\o''brien\scripts\x.ps1' @args"))
+    }
+    It 'is valid PowerShell' {
+        $errs = $null
+        [System.Management.Automation.Language.Parser]::ParseInput(
+            (Get-DotfilesForwarderContent -Target 'R:\repo\s\x.ps1'), [ref]$null, [ref]$errs) | Out-Null
+        $errs | Should -BeNullOrEmpty
+    }
+}
+
 Describe 'Get-DotfilesStubContent' {
     It 'returns nothing for a row with no stub form, so the caller symlinks it' {
-        Get-DotfilesStubContent -Name 'psmux.conf'   -Target 'R:\repo\psmux\psmux.conf'      | Should -BeNullOrEmpty
-        Get-DotfilesStubContent -Name 'jj config'    -Target 'R:\repo\jj\config.toml'        | Should -BeNullOrEmpty
+        Get-DotfilesStubContent -Name '.gitignore_global' -Target 'R:\repo\git\.gitignore_global' | Should -BeNullOrEmpty
+        Get-DotfilesStubContent -Name 'GlazeWM config'    -Target 'R:\repo\desktop\glazewm\config.yaml' | Should -BeNullOrEmpty
+    }
+    It 'sources the repo copy for both psmux configs' {
+        # psmux's syntax is tmux-compatible, so source-file IS the include directive -
+        # the repo's own psmux.conf already opens with one.
+        foreach ($n in 'psmux.conf', 'psmux.reset.conf') {
+            $c = Get-DotfilesStubContent -Name $n -Target "C:\repo\psmux\$n"
+            $c | Should -Match ([regex]::Escape("source-file C:\repo\psmux\$n"))
+        }
+    }
+    It 'keeps psmux paths in native backslashes - psmux takes them literally' {
+        $c = Get-DotfilesStubContent -Name 'psmux.conf' -Target 'C:\Users\me\repo\psmux\psmux.conf'
+        $c | Should -Match ([regex]::Escape('C:\Users\me\repo\psmux\psmux.conf'))
+        $c | Should -Not -Match ([regex]::Escape('C:/Users/me'))
     }
     It 'dot-sources the repo profile rather than linking to it' {
         $c = Get-DotfilesStubContent -Name 'PowerShell profile' -Target 'R:\repo\powershell\profile.ps1'
@@ -594,6 +690,70 @@ Describe 'Get-DotfilesStubContent' {
         $c | Should -Match ([regex]::Escape('Include C:\repo\ssh\config'))
         $first = @($c -split "`r?`n" | Where-Object { $_ -and $_ -notmatch '^\s*#' })[0]
         $first | Should -Match '^Include '
+    }
+}
+
+Describe 'Test-StubDirIntoRepo' {
+    BeforeEach {
+        $script:DirRoot = Join-Path $TestDrive "sd-$([guid]::NewGuid().ToString('N'))"
+        $script:DirSrc  = Join-Path $script:DirRoot 'repo\psmux\scripts'
+        $script:DirLink = Join-Path $script:DirRoot 'home\scripts'
+        New-Item -ItemType Directory -Force -Path $script:DirSrc, $script:DirLink | Out-Null
+        foreach ($n in 'a.ps1', 'b.ps1') { 'real' | Set-Content -LiteralPath (Join-Path $script:DirSrc $n) }
+        $script:DirRepo = Join-Path $script:DirRoot 'repo'
+    }
+    It 'is true when every script has a forwarder into the repo' {
+        foreach ($n in 'a.ps1', 'b.ps1') {
+            Set-Content -LiteralPath (Join-Path $script:DirLink $n) `
+                -Value (Get-DotfilesForwarderContent -Target (Join-Path $script:DirSrc $n))
+        }
+        Test-StubDirIntoRepo -Link $script:DirLink -Target $script:DirSrc -Root $script:DirRepo | Should -BeTrue
+    }
+    It 'is FALSE when a script has no forwarder - a forwarder dir does not self-track' {
+        # The whole tradeoff of StubDir vs a symlink: a script added upstream is not
+        # picked up until the next install, and this is what says so.
+        Set-Content -LiteralPath (Join-Path $script:DirLink 'a.ps1') `
+            -Value (Get-DotfilesForwarderContent -Target (Join-Path $script:DirSrc 'a.ps1'))
+        Test-StubDirIntoRepo -Link $script:DirLink -Target $script:DirSrc -Root $script:DirRepo | Should -BeFalse
+    }
+    It 'is FALSE when a forwarder outlived its script - drift runs both ways' {
+        # Checking only coverage let this survive forever: the stale forwarder is not
+        # missing, so install skipped as "already wired" and never swept it, leaving a
+        # psmux bind that opens a popup and immediately errors.
+        foreach ($n in 'a.ps1', 'b.ps1') {
+            Set-Content -LiteralPath (Join-Path $script:DirLink $n) `
+                -Value (Get-DotfilesForwarderContent -Target (Join-Path $script:DirSrc $n))
+        }
+        Set-Content -LiteralPath (Join-Path $script:DirLink 'gone.ps1') `
+            -Value (Get-DotfilesForwarderContent -Target (Join-Path $script:DirSrc 'gone.ps1'))
+        Test-StubDirIntoRepo -Link $script:DirLink -Target $script:DirSrc -Root $script:DirRepo | Should -BeFalse
+    }
+    It 'ignores an unrelated file of the user''s own when checking for stale forwarders' {
+        # Theirs to keep - only OUR forwarders are reconciled against the repo.
+        foreach ($n in 'a.ps1', 'b.ps1') {
+            Set-Content -LiteralPath (Join-Path $script:DirLink $n) `
+                -Value (Get-DotfilesForwarderContent -Target (Join-Path $script:DirSrc $n))
+        }
+        'my own notes' | Set-Content -LiteralPath (Join-Path $script:DirLink 'notes.txt')
+        Test-StubDirIntoRepo -Link $script:DirLink -Target $script:DirSrc -Root $script:DirRepo | Should -BeTrue
+    }
+    It 'is false when a forwarder is really the user''s own file' {
+        Set-Content -LiteralPath (Join-Path $script:DirLink 'a.ps1') `
+            -Value (Get-DotfilesForwarderContent -Target (Join-Path $script:DirSrc 'a.ps1'))
+        'my own script' | Set-Content -LiteralPath (Join-Path $script:DirLink 'b.ps1')
+        Test-StubDirIntoRepo -Link $script:DirLink -Target $script:DirSrc -Root $script:DirRepo | Should -BeFalse
+    }
+    It 'is false for a directory SYMLINK - the shape being migrated away from' {
+        $link = Join-Path $script:DirRoot 'home\linked'
+        New-Item -ItemType SymbolicLink -Path $link -Target $script:DirSrc | Out-Null
+        Test-StubDirIntoRepo -Link $link -Target $script:DirSrc -Root $script:DirRepo | Should -BeFalse
+    }
+    It 'is false for a missing link, an empty source, and a blank root' {
+        Test-StubDirIntoRepo -Link (Join-Path $script:DirRoot 'nope') -Target $script:DirSrc -Root $script:DirRepo | Should -BeFalse
+        $empty = Join-Path $script:DirRoot 'repo\empty'
+        New-Item -ItemType Directory -Force -Path $empty | Out-Null
+        Test-StubDirIntoRepo -Link $script:DirLink -Target $empty -Root $script:DirRepo | Should -BeFalse
+        Test-StubDirIntoRepo -Link $script:DirLink -Target $script:DirSrc -Root '' | Should -BeFalse
     }
 }
 

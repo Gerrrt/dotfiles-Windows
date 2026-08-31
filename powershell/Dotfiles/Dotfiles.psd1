@@ -43,8 +43,12 @@
         'Test-InteractiveShell'
         'Test-InMux'
         'Get-DotfilesLinkPlan'
+        'Get-DotfilesRetiredLinkPlan'
+        'Get-DotfilesEnvPlan'
         'Get-DotfilesStubContent'
+        'Get-DotfilesForwarderContent'
         'Test-StubIntoRepo'
+        'Test-StubDirIntoRepo'
         'ConvertTo-WslPath'
         'Select-DotHostAddress'
         # remote access: ssh into this host and the distros behind it

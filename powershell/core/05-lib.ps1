@@ -17,7 +17,7 @@
 # ============================================================================
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
-# provides: Test-SensitiveHistoryLine, Get-DotConfirmAnswer, Test-DotGum, Read-DotConfirm, Get-DotStringSha256, Get-DotSpinnerFrame, Invoke-DotSpinner, Test-DotEmailish, Get-DotToolNudge, Test-DotNonInteractiveArg, Test-InteractiveShell, Test-InMux, Get-DotfilesLinkPlan, Get-DotfilesStubContent, Test-StubIntoRepo, Test-DotStubParentStale, Test-DotColor, Test-DotUnicode, Get-DotGlyph, Write-DotHost, Write-DotBanner, Get-DotConsoleWidth, Format-DotWrap, Write-DotRule, Write-DotErr, Write-DotOk, Write-DotWarn
+# provides: Test-SensitiveHistoryLine, Get-DotConfirmAnswer, Test-DotGum, Read-DotConfirm, Get-DotStringSha256, Get-DotSpinnerFrame, Invoke-DotSpinner, Test-DotEmailish, Get-DotToolNudge, Test-DotNonInteractiveArg, Test-InteractiveShell, Test-InMux, Get-DotfilesLinkPlan, Get-DotfilesRetiredLinkPlan, Get-DotfilesEnvPlan, Get-DotfilesStubContent, Get-DotfilesForwarderContent, Test-StubIntoRepo, Test-StubDirIntoRepo, Test-DotStubParentStale, Test-DotColor, Test-DotUnicode, Get-DotGlyph, Write-DotHost, Write-DotBanner, Get-DotConsoleWidth, Format-DotWrap, Write-DotRule, Write-DotErr, Write-DotOk, Write-DotWarn
 # requires: (none)
 
 # --- Test-SensitiveHistoryLine ------------------------------------------------
@@ -452,18 +452,26 @@ function Get-DotfilesLinkPlan {
         # core.excludesfile to point straight at the repo copy, which is what makes
         # global ignores work over ssh — this row only serves interactive sessions.
         & $row '.gitignore_global'         (& $repo 'git\.gitignore_global')         (& $join $HomeDir      '.gitignore_global')
-        # jj (jujutsu) — git companion; jj reads %APPDATA%\jj\config.toml on Windows.
-        # Plain row (parent created on demand): linking a config for an as-yet-uninstalled
-        # tool is harmless, exactly like the nvim/GlazeWM rows.
-        & $row 'jj config'                 (& $repo 'jj\config.toml')                (& $join $RoamingAppData 'jj\config.toml')
-        # mise (runtime version manager) — reads ~/.config/mise/config.toml on Windows.
-        # Plain row like the jj/nvim ones: linking ahead of the tool is harmless, and
-        # the hook in core/10-tools.ps1 no-ops when mise isn't installed.
-        & $row 'mise config'               (& $repo 'mise\config.toml')              (& $join $HomeDir      '.config\mise\config.toml')
+        # jj and mise are NOT wired here any more — see Get-DotfilesEnvPlan. Both are
+        # TOML, which has no include directive, so neither can be stubbed and a symlink
+        # is unreadable over ssh (measured: `jj config get ui.default-command` answered
+        # "Value not found", and `mise config ls` listed nothing). They are pointed at
+        # the repo with JJ_CONFIG / MISE_GLOBAL_CONFIG_FILE instead. The old link paths
+        # ride along as LegacyLink so uninstall can still retire what a previous
+        # install left behind.
         & $row 'ssh config'                (& $repo 'ssh\config')                    (& $join $HomeDir      '.ssh\config') $false 'Stub'
-        & $row 'psmux.conf'                (& $repo 'psmux\psmux.conf')              (& $join $HomeDir      '.config\psmux\psmux.conf')
-        & $row 'psmux.reset.conf'          (& $repo 'psmux\psmux.reset.conf')        (& $join $HomeDir      '.config\psmux\psmux.reset.conf')
-        & $row 'psmux scripts'             (& $repo 'psmux\scripts')                 (& $join $HomeDir      '.config\psmux\scripts')
+        # psmux's config format is tmux-compatible, so `source-file` IS its include
+        # mechanism — the repo's own psmux.conf already uses it to pull in the reset
+        # file. Both are stubbed; the reset stub is what that existing source-file line
+        # then resolves to, so the chain needs no change to the config itself.
+        & $row 'psmux.conf'                (& $repo 'psmux\psmux.conf')              (& $join $HomeDir      '.config\psmux\psmux.conf') $false 'Stub'
+        & $row 'psmux.reset.conf'          (& $repo 'psmux\psmux.reset.conf')        (& $join $HomeDir      '.config\psmux\psmux.reset.conf') $false 'Stub'
+        # A DIRECTORY of pwsh popup helpers, and a directory has no include directive
+        # either. StubDir is the answer: a real directory of one-line forwarders, one
+        # per script, each invoking the repo copy. That leaves psmux.conf's eight bind
+        # lines untouched — they keep pointing at ~/.config/psmux/scripts, which is now
+        # real. See Write-StubDirItem in install.ps1.
+        & $row 'psmux scripts'             (& $repo 'psmux\scripts')                 (& $join $HomeDir      '.config\psmux\scripts') $false 'StubDir'
         & $row 'Windows Terminal settings'             (& $repo 'windows-terminal\settings.json') (& $join $LocalAppData 'Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json') $true
         & $row 'Windows Terminal settings (unpackaged)' (& $repo 'windows-terminal\settings.json') (& $join $LocalAppData 'Microsoft\Windows Terminal\settings.json') $true
         & $row 'Windows Terminal settings (Preview)'    (& $repo 'windows-terminal\settings.json') (& $join $LocalAppData 'Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json') $true
@@ -472,6 +480,78 @@ function Get-DotfilesLinkPlan {
         # an as-yet-uninstalled app is harmless, exactly like the nvim row above.
         & $row 'GlazeWM config'            (& $repo 'desktop\glazewm\config.yaml')   (& $join $HomeDir      '.glzr\glazewm\config.yaml')
         & $row 'Zebar vanilla-clear'       (& $repo 'desktop\zebar\vanilla-clear')   (& $join $HomeDir      '.glzr\zebar\vanilla-clear')
+    )
+}
+
+# --- Get-DotfilesRetiredLinkPlan ----------------------------------------------
+# Paths this repo USED to wire and no longer does. Not part of the link plan — there
+# is nothing to create here — but install and uninstall both have to know about them,
+# or a box that was set up before the change is left with a symlink nothing owns,
+# sitting at the conventional path, that the tool no longer even reads.
+#
+# jj and mise moved to JJ_CONFIG / MISE_GLOBAL_CONFIG_FILE (Get-DotfilesEnvPlan). A
+# leftover link is inert rather than harmful — the env var wins outright — but it is
+# exactly the kind of stale artifact that sends someone debugging the wrong file.
+# Target is carried so callers can identify OUR link exactly (Test-SymlinkCurrent)
+# rather than by a loose path match. A link left over from a checkout at a different
+# path is deliberately not recognised: better to leave a stranger's file alone than to
+# delete something on a guess.
+function Get-DotfilesRetiredLinkPlan {
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [string]$HomeDir        = $HOME,
+        [string]$RoamingAppData = $env:APPDATA
+    )
+    $join = { param($a, $b) [System.IO.Path]::Combine($a, $b) }
+    if (-not $RoamingAppData) { $RoamingAppData = & $join $HomeDir 'AppData\Roaming' }
+    @(
+        [pscustomobject]@{
+            Name   = 'jj config'
+            Target = (& $join $RepoRoot 'jj\config.toml')
+            Link   = (& $join $RoamingAppData 'jj\config.toml')
+            Reason = 'JJ_CONFIG'
+        }
+        [pscustomobject]@{
+            Name   = 'mise config'
+            Target = (& $join $RepoRoot 'mise\config.toml')
+            Link   = (& $join $HomeDir '.config\mise\config.toml')
+            Reason = 'MISE_GLOBAL_CONFIG_FILE'
+        }
+    )
+}
+
+# --- Get-DotfilesEnvPlan ------------------------------------------------------
+# The persistent User-scope environment variables this repo owns, as {Name, Value}.
+#
+# A third wiring mechanism, alongside Symlink and Stub, and the only one available
+# to a config format with NO include directive. jj and mise are both TOML, which
+# has none — so there is nothing to stub, and a symlink is unreadable over ssh. Both
+# tools do accept a path from the environment, verified on a real host:
+#
+#   JJ_CONFIG                 a TOML file or a directory of them; when set it
+#                             REPLACES the default user-config location entirely
+#                             (`jj help -k config`). Without it, `jj config get
+#                             ui.default-command` answered "Value not found".
+#   MISE_GLOBAL_CONFIG_FILE   the global config path. Without it, `mise config ls`
+#                             outside a project listed nothing at all.
+#
+# User scope, not Process, because the point is to reach every process on the box —
+# including an ssh session, which gets the user's environment from the registry, and
+# a scheduled task. This is the same mechanism DOTFILES_WIN already relies on.
+#
+# The cost, stated plainly: nothing exists at ~/.config/mise/config.toml any more, so
+# the wiring is invisible to someone poking around the conventional path. That is why
+# `dotfiles-doctor` reports these rows explicitly — an env var that silently goes
+# missing looks exactly like a tool with no config.
+function Get-DotfilesEnvPlan {
+    [OutputType([pscustomobject])]
+    param([Parameter(Mandatory)][string]$RepoRoot)
+    $join = { param($a, $b) [System.IO.Path]::Combine($a, $b) }
+    @(
+        [pscustomobject]@{ Name = 'DOTFILES_WIN';            Value = $RepoRoot }
+        [pscustomobject]@{ Name = 'JJ_CONFIG';               Value = (& $join $RepoRoot 'jj\config.toml') }
+        [pscustomobject]@{ Name = 'MISE_GLOBAL_CONFIG_FILE'; Value = (& $join $RepoRoot 'mise\config.toml') }
     )
 }
 
@@ -621,6 +701,26 @@ vim.opt.runtimepath:prepend(config)
 vim.opt.runtimepath:append(config .. '/after')
 "@
         }
+        { $_ -in 'psmux.conf', 'psmux.reset.conf' } {
+            # psmux's config syntax is tmux-compatible, so source-file is the include
+            # directive — the repo's psmux.conf already opens with one. Native
+            # backslashes: psmux takes the path literally, like ssh_config.
+            #
+            # Unlike ssh_config there is no first-wins/last-wins subtlety to respect;
+            # a later `set -g` simply overrides an earlier one, so a user's own lines
+            # go BELOW the source-file and win, which is the intuitive order.
+            @"
+# ~/.config/psmux/$Name — dotfiles-Windows shim (REAL FILE, deliberately not a
+# symlink). A symlinked config is unreadable over ssh: sshd inherits Redirection
+# Guard from the Windows service lineage and refuses to traverse a reparse point
+# into this repo. See docs/REMOTE-ACCESS.md.
+#
+# Add your own lines BELOW the source-file: psmux is last-value-wins, so anything
+# here overrides the repo copy rather than being masked by it.
+
+source-file $Target
+"@
+        }
         'ssh config' {
             @"
 # ~/.ssh/config — dotfiles-Windows shim (REAL FILE, deliberately not a symlink).
@@ -636,6 +736,70 @@ Include $Target
         }
         default { $null }
     }
+}
+
+# --- Get-DotfilesForwarderContent ---------------------------------------------
+# The body of ONE file inside a Kind='StubDir' row: a real .ps1 that invokes the repo
+# copy and passes its arguments through. The StubDir counterpart to
+# Get-DotfilesStubContent, kept separate because it is per-FILE, not per-row.
+#
+# `&` rather than dot-sourcing: these are standalone popup scripts, not fragments that
+# need to define anything in the caller's scope, and `&` keeps $PSScriptRoot pointing
+# at the REPO copy — so a script that resolves a sibling still finds it. @args
+# forwards parameters verbatim.
+#
+# The path is single-quoted, with embedded quotes doubled, so a repo path containing
+# a quote or a `$` is taken literally instead of being expanded.
+function Get-DotfilesForwarderContent {
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$Target)
+    $quoted = "'" + ($Target -replace "'", "''") + "'"
+    @"
+# dotfiles-Windows forwarder (REAL FILE, deliberately not a symlink).
+# A symlinked script is unreadable over ssh — see docs/REMOTE-ACCESS.md.
+# Edit the real script at the path below, not this file.
+& $quoted @args
+"@
+}
+
+# --- Test-StubDirIntoRepo -----------------------------------------------------
+# The Kind='StubDir' counterpart to Test-StubIntoRepo: true when $Link is a REAL
+# directory (not a reparse point) whose forwarders cover every file in $Target and
+# reference $Root.
+#
+# "In sync" is the part that matters and the reason this is not just Test-StubIntoRepo
+# in a loop: unlike a symlinked directory, a forwarder directory does NOT track the
+# repo on its own. Drift runs BOTH ways and both directions have to fail this, or
+# install's idempotent skip hides the very state it should be repairing:
+#
+#   • a script added upstream has no forwarder until the next install;
+#   • a script DELETED upstream leaves a forwarder pointing at nothing, and a psmux
+#     bind that opens a popup which immediately errors. Checking only coverage let
+#     that one survive forever — the stale forwarder is not missing, so coverage was
+#     satisfied, install returned "already wired", and its sweep never ran.
+#
+# Files the user put here themselves are ignored in the stale direction (they are not
+# ours to reconcile), but a file sitting where a forwarder belongs still fails the
+# coverage check above, so nothing is silently overwritten either.
+function Test-StubDirIntoRepo {
+    [OutputType([bool])]
+    param([string]$Link, [string]$Target, [string]$Root)
+    if (-not $Root) { return $false }
+    if (-not (Test-Path -LiteralPath $Link -PathType Container)) { return $false }
+    $item = Get-Item -LiteralPath $Link -Force -ErrorAction SilentlyContinue
+    if (-not $item -or $item.LinkType) { return $false }
+    $sources = @(Get-ChildItem -LiteralPath $Target -File -ErrorAction SilentlyContinue)
+    if (-not $sources.Count) { return $false }
+    foreach ($src in $sources) {
+        $forwarder = [System.IO.Path]::Combine($Link, $src.Name)
+        if (-not (Test-StubIntoRepo -Link $forwarder -Root $Root)) { return $false }
+    }
+    $names = @($sources | ForEach-Object Name)
+    foreach ($present in @(Get-ChildItem -LiteralPath $Link -File -ErrorAction SilentlyContinue)) {
+        if ($names -contains $present.Name) { continue }
+        if (Test-StubIntoRepo -Link $present.FullName -Root $Root) { return $false }   # stale: ours, no source
+    }
+    return $true
 }
 
 # --- Test-StubIntoRepo --------------------------------------------------------

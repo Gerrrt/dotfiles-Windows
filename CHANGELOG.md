@@ -8,6 +8,62 @@ so entries are grouped by theme rather than strict semver releases.
 
 ### Fixed
 
+- **psmux, jj and mise were all invisible over ssh too.** The follow-up #225 named:
+  every remaining config this repo wired was a symlink into the repo, and under
+  Redirection Guard a Windows process cannot read any of them. Measured on this host
+  before the change — `jj config get ui.default-command` answered *"Value not found"*
+  and `mise config ls` outside a project listed nothing, so both tools had been
+  silently running on their own defaults rather than erroring.
+
+  Three different config systems needed three different answers, and finding out which
+  was the actual work:
+
+  - **psmux** turned out to already have an include directive. Its syntax is
+    tmux-compatible, so `source-file` is the mechanism — the repo's own `psmux.conf`
+    opens with one. Both `psmux.conf` and `psmux.reset.conf` become `Kind = 'Stub'`,
+    and the repo conf's existing `source-file ~/.config/psmux/psmux.reset.conf` line
+    simply resolves to the second stub. No change to the config itself.
+  - **`~/.config/psmux/scripts`** is a *directory* of eight pwsh popup helpers, and a
+    directory has no include form. New `Kind = 'StubDir'`: a real directory of
+    one-line forwarders, one per script, each `&`-invoking the repo copy with `@args`.
+    That leaves psmux.conf's eight `display-popup` binds untouched — they still name
+    `~/.config/psmux/scripts`, which is real now — and `&` rather than dot-sourcing
+    keeps `$PSScriptRoot` pointing at the repo, so a script that resolves a sibling
+    still finds it.
+  - **jj and mise** are TOML, which has no include directive at all. Neither can be
+    stubbed, so they are not wired as files any more: `Get-DotfilesEnvPlan` sets
+    `JJ_CONFIG` and `MISE_GLOBAL_CONFIG_FILE` as persistent **User**-scope variables
+    pointing into the repo — both verified against the installed versions before being
+    committed to. User scope is what reaches an ssh session and a scheduled task, the
+    same mechanism `DOTFILES_WIN` already uses.
+
+  A forwarder directory does not track the repo by itself, and the drift runs **both
+  ways**. Checking only that every script has a forwarder let the other direction
+  survive indefinitely: a script deleted upstream leaves a forwarder pointing at
+  nothing, that forwarder is not *missing*, so install returned "already wired" and
+  its own stale-sweep never ran — leaving a psmux bind that opens a popup and
+  immediately errors. `Test-StubDirIntoRepo` now fails on both directions, which is
+  what makes the sweep reachable.
+
+  Two honesty problems came with the env-var mechanism, both handled rather than
+  documented away. Nothing exists at `~/.config/mise/config.toml` any more, so the
+  wiring is invisible at the conventional path — hence explicit `env:` rows in
+  `dotfiles-doctor`, because a variable that goes missing looks exactly like a tool
+  with no config. And a shell already open when `install.ps1` runs keeps the old
+  environment block, so the doctor checks the **process** value as well as the
+  registry and reports *"set for new sessions, but missing from THIS one"* instead of
+  grading it `ok` — the same false-`ok` shape the nvim row taught us to look for.
+
+  `install.ps1` retires the superseded jj/mise symlinks (identified by
+  `Test-SymlinkCurrent` against the plan's Target, so a link belonging to another
+  checkout is left alone), and `uninstall.ps1` clears the two variables — but only
+  while they still point into this repo, and never `DOTFILES_WIN`, which is how
+  `bootstrap.ps1` finds an existing checkout.
+
+  Still a symlink, and correctly so: `.gitignore_global` (global ignores reach ssh via
+  the `.gitconfig` stub's `core.excludesfile` override) and the interactive-only
+  desktop configs — Windows Terminal, GlazeWM, Zebar.
+
 - **nvim started bare over ssh — netrw and a black background.** `%LOCALAPPDATA%\nvim`
   was a directory symlink onto the repo's `nvim/` tree, which is exactly the shape
   Redirection Guard refuses, so the editor never read its own `init.lua`. #215 fixed
