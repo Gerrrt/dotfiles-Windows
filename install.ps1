@@ -376,8 +376,67 @@ function Link-Item {
 # Mirrors Link-Item's contract deliberately (idempotent skip, back up before
 # overwrite, honour -DryRun, same LinkStats) so the two paths behave identically
 # from the user's side and the summary stays truthful.
+#
+# Retire a stub's PARENT DIRECTORY when it is the leftover of an older wiring — a
+# reparse point, or a stale copy of the target's tree. Called before anything else
+# touches $Link, because until it runs every path operation on $Link may resolve
+# THROUGH the old link and act on the repo instead of on %LOCALAPPDATA%. Returns
+# 'clean' (nothing to do), 'retired' (moved aside; $Link is now absent) or 'declined'
+# (the user kept it, so the row must be skipped) — the caller needs the three apart
+# to report truthfully under -DryRun.
+# See Test-DotStubParentStale (core/05-lib.ps1) for which shapes qualify and why.
+#
+# Gated on the row's LegacyLink naming this exact directory, and that gate is the
+# whole safety story. Without it the staleness test is applied to whatever directory
+# a stub happens to live in — for ~/.gitconfig that is $HOME, which contains
+# .gitignore_global, which IS a sibling of the target in the repo. It matched, and a
+# -DryRun offered to retire the user's home directory. A stub may only ever retire a
+# directory the plan says this row used to own.
+function Clear-StubParent {
+    [OutputType([string])]
+    param([string]$Target, [string]$Link, [string]$LegacyLink)
+
+    if (-not $LegacyLink) { return 'clean' }
+    $parent = Split-Path -Parent $Link
+    $cmp    = [System.StringComparison]::OrdinalIgnoreCase
+    if (-not [string]::Equals($LegacyLink.TrimEnd('\', '/'), $parent.TrimEnd('\', '/'), $cmp)) { return 'clean' }
+    if (-not (Test-Path -LiteralPath $parent)) { return 'clean' }
+    $item = Get-Item -LiteralPath $parent -Force -ErrorAction SilentlyContinue
+    if (-not $item) { return 'clean' }
+
+    # Read both directories WITHOUT traversing: on a reparse-point parent, listing
+    # its children would list the repo's, and every name would "match" itself.
+    $isReparse = [bool]$item.LinkType
+    $entries   = @()
+    $siblings  = @()
+    if (-not $isReparse) {
+        $leaf      = Split-Path -Leaf $Target
+        $entries   = @(Get-ChildItem -LiteralPath $parent -Force -ErrorAction SilentlyContinue | ForEach-Object Name)
+        $siblings  = @(Get-ChildItem -LiteralPath (Split-Path -Parent $Target) -Force -ErrorAction SilentlyContinue |
+            ForEach-Object Name | Where-Object { $_ -ne $leaf })
+    }
+    if (-not (Test-DotStubParentStale -IsReparsePoint $isReparse -ParentEntries $entries -TargetSiblings $siblings)) {
+        return 'clean'
+    }
+
+    $shape = if ($isReparse) { 'a link into the repo' } else { 'a stale copy of the repo tree' }
+    if ($script:DryRun) {
+        Write-DotHost "  would retire $parent ($shape)" -Color DarkYellow
+        return 'retired'
+    }
+    if (-not (Confirm-Overwrite $parent)) {
+        Write-Host "  skip    $parent (kept existing, by request)" -ForegroundColor DarkGray
+        return 'declined'
+    }
+    $backup = "$parent.$(Get-Date -Format 'yyyyMMdd-HHmmss').bak"
+    Move-Item -LiteralPath $parent -Destination $backup -Force -ErrorAction Stop
+    Write-DotHost "  retired $parent ($shape) -> $backup" -Color DarkYellow
+    $script:LinkStats.backedup++
+    return 'retired'
+}
+
 function Write-StubItem {
-    param([string]$Name, [string]$Target, [string]$Link)
+    param([string]$Name, [string]$Target, [string]$Link, [string]$LegacyLink)
 
     $content = Get-DotfilesStubContent -Name $Name -Target $Target
     if ($null -eq $content) {
@@ -388,18 +447,30 @@ function Write-StubItem {
         return
     }
 
+    # FIRST, before any Test-Path/Move-Item below: an older wiring of this row's
+    # parent has to go, or every one of them silently resolves through it into the
+    # repo. Nothing else in this function is safe until this has run.
+    $parentState = Clear-StubParent -Target $Target -Link $Link -LegacyLink $LegacyLink
+    if ($parentState -eq 'declined') {
+        $script:LinkStats.skipped++
+        return
+    }
+
     # Idempotent: an existing stub that already points into the repo is left ALONE,
     # content untouched. Test-StubIntoRepo is a reference check, not an equality
     # check, precisely so a user's own added lines survive a re-install.
-    if (Test-StubIntoRepo -Link $Link -Root $RepoRoot) {
+    if ($parentState -eq 'clean' -and (Test-StubIntoRepo -Link $Link -Root $RepoRoot)) {
         Write-Host "  ok      $Link (already wired)" -ForegroundColor DarkGray
         $script:LinkStats.skipped++
         return
     }
 
     if ($script:DryRun) {
-        if (Test-Path -LiteralPath $Link) { Write-DotHost "  would back up + write stub  $Link" -Color DarkYellow }
-        else                              { Write-DotHost "  would write stub  $Link" -Color Cyan }
+        # 'retired' means the parent (and with it $Link) is on its way out, so there
+        # is nothing left here to back up — say so rather than reporting a file that
+        # only still exists because -DryRun changed nothing.
+        if ($parentState -eq 'clean' -and (Test-Path -LiteralPath $Link)) { Write-DotHost "  would back up + write stub  $Link" -Color DarkYellow }
+        else                                                        { Write-DotHost "  would write stub  $Link" -Color Cyan }
         return
     }
 
@@ -584,7 +655,7 @@ foreach ($row in (Get-DotfilesLinkPlan -RepoRoot $RepoRoot)) {
     # Kind decides HOW: a stub is a real file that includes the repo copy, because a
     # symlink is unreadable from an ssh session (Redirection Guard — see
     # docs/REMOTE-ACCESS.md). Everything else is linked exactly as before.
-    if ($row.Kind -eq 'Stub') { Write-StubItem -Name $row.Name -Target $row.Target -Link $row.Link }
+    if ($row.Kind -eq 'Stub') { Write-StubItem -Name $row.Name -Target $row.Target -Link $row.Link -LegacyLink $row.LegacyLink }
     else                      { Link-Item -Target $row.Target -Link $row.Link }
     if ($row.Name -eq 'PowerShell profile') {
         Write-Host "  (profile target: $($row.Link))" -ForegroundColor DarkGray

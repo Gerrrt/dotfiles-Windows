@@ -17,7 +17,7 @@
 # ============================================================================
 
 # --- load contract (checked by tests/LoadContract.Tests.ps1) ------------------
-# provides: Test-SensitiveHistoryLine, Get-DotConfirmAnswer, Test-DotGum, Read-DotConfirm, Get-DotStringSha256, Get-DotSpinnerFrame, Invoke-DotSpinner, Test-DotEmailish, Get-DotToolNudge, Test-DotNonInteractiveArg, Test-InteractiveShell, Test-InMux, Get-DotfilesLinkPlan, Get-DotfilesStubContent, Test-StubIntoRepo, Test-DotColor, Test-DotUnicode, Get-DotGlyph, Write-DotHost, Write-DotBanner, Get-DotConsoleWidth, Format-DotWrap, Write-DotRule, Write-DotErr, Write-DotOk, Write-DotWarn
+# provides: Test-SensitiveHistoryLine, Get-DotConfirmAnswer, Test-DotGum, Read-DotConfirm, Get-DotStringSha256, Get-DotSpinnerFrame, Invoke-DotSpinner, Test-DotEmailish, Get-DotToolNudge, Test-DotNonInteractiveArg, Test-InteractiveShell, Test-InMux, Get-DotfilesLinkPlan, Get-DotfilesStubContent, Test-StubIntoRepo, Test-DotStubParentStale, Test-DotColor, Test-DotUnicode, Get-DotGlyph, Write-DotHost, Write-DotBanner, Get-DotConsoleWidth, Format-DotWrap, Write-DotRule, Write-DotErr, Write-DotOk, Write-DotWarn
 # requires: (none)
 
 # --- Test-SensitiveHistoryLine ------------------------------------------------
@@ -401,11 +401,20 @@ function Test-InMux {
 # INHERITED and NON-RELAXABLE (IFEO REDIRECTION_TRUST_ALWAYS_OFF is ignored), so
 # it cannot be configured away — see docs/REMOTE-ACCESS.md.
 #
-# So the three configs that matter most over ssh are wired as REAL FILES that
-# point into the repo using the config format's own include mechanism. Same single
-# source of truth, no reparse point. Everything else stays a symlink: either it has
-# no include mechanism (.gitignore_global), or it is only ever used interactively
-# (Windows Terminal, GlazeWM, Zebar).
+# So the configs that matter most over ssh are wired as REAL FILES that point into
+# the repo using the config format's own include mechanism. Same single source of
+# truth, no reparse point. Everything else stays a symlink: either it has no include
+# mechanism (.gitignore_global), or it is only ever used interactively (Windows
+# Terminal, GlazeWM, Zebar).
+#
+# nvim is the row where "the config" is a DIRECTORY, so its reparse point sits on
+# the PARENT of the wired path: %LOCALAPPDATA%\nvim was a directory symlink into
+# nvim/, and under enforcement the editor could not read its own init.lua — it
+# started bare, with netrw and no colorscheme. The stub form wires the FILE
+# (%LOCALAPPDATA%\nvim\init.lua) inside a real directory, and that file prepends the
+# repo tree to 'runtimepath' and dofile()s it. Do NOT reach for the alternative of
+# pointing XDG_CONFIG_HOME at the repo: nvim would honour it, but so would every
+# other tool that reads ~/.config.
 function Get-DotfilesLinkPlan {
     param(
         [Parameter(Mandatory)][string]$RepoRoot,
@@ -419,16 +428,24 @@ function Get-DotfilesLinkPlan {
     if (-not $LocalAppData)   { $LocalAppData   = & $join $HomeDir 'AppData\Local' }
     if (-not $RoamingAppData) { $RoamingAppData = & $join $HomeDir 'AppData\Roaming' }
     $repo = { param($p) & $join $RepoRoot $p }
+    # LegacyLink: a path an EARLIER shape of this row wired, which uninstall must
+    # still recognise as ours. Without it, a row that changes shape orphans whatever
+    # the previous install left on disk — the plan no longer names it, so nothing
+    # ever cleans it up. For nvim it is also the stub's parent directory, so uninstall
+    # uses it for both jobs: retire the old directory symlink, and drop the real
+    # directory afterwards if the stub was the only thing in it.
     $row  = {
-        param($Name, $Target, $Link, $ParentMustExist = $false, $Kind = 'Symlink')
-        [pscustomobject]@{ Name = $Name; Target = $Target; Link = $Link; ParentMustExist = $ParentMustExist; Kind = $Kind }
+        param($Name, $Target, $Link, $ParentMustExist = $false, $Kind = 'Symlink', $LegacyLink = $null)
+        [pscustomobject]@{ Name = $Name; Target = $Target; Link = $Link; ParentMustExist = $ParentMustExist; Kind = $Kind; LegacyLink = $LegacyLink }
     }
     @(
         # Kind = 'Stub' rows are wired as a REAL FILE that points into the repo via the
         # config format's own include mechanism, NOT as a symlink. See the Kind note in
         # this function's header and Get-DotfilesStubContent below for the why.
         & $row 'PowerShell profile'        (& $repo 'powershell\profile.ps1')        (& $join $Documents    'PowerShell\Microsoft.PowerShell_profile.ps1') $false 'Stub'
-        & $row 'nvim config'               (& $repo 'nvim')                          (& $join $LocalAppData 'nvim')
+        # The wired path is init.lua INSIDE a real %LOCALAPPDATA%\nvim, not the
+        # directory itself — see the nvim note in this function's header.
+        & $row 'nvim config'               (& $repo 'nvim\init.lua')                 (& $join $LocalAppData 'nvim\init.lua') $false 'Stub' (& $join $LocalAppData 'nvim')
         & $row '.gitconfig'                (& $repo 'git\.gitconfig')                (& $join $HomeDir      '.gitconfig') $false 'Stub'
         # Stays a symlink on purpose: a .gitignore file has no include directive, so
         # there is nothing to stub. The .gitconfig stub instead overrides
@@ -466,8 +483,10 @@ function Get-DotfilesLinkPlan {
 # caller that the row should be symlinked instead.
 #
 # Paths are emitted with FORWARD slashes for git (its config parser treats a
-# backslash as an escape, so C:\Users would eat the \U) and with native
-# backslashes for ssh_config and PowerShell, which both take them literally.
+# backslash as an escape, so C:\Users would eat the \U) and for Lua (same reason —
+# '\U' in a quoted string is an escape, and Neovim accepts forward slashes on
+# Windows), and with native backslashes for ssh_config and PowerShell, which both
+# take them literally.
 function Get-DotfilesStubContent {
     [OutputType([string])]
     param(
@@ -509,6 +528,97 @@ if (Test-Path -LiteralPath `$dotfilesProfile) {
 # stay AFTER the include: last value wins.
 [core]
 	excludesfile = $ignore
+"@
+        }
+        'nvim config' {
+            # $Target is <repo>\nvim\init.lua; the config TREE is its parent, and that
+            # is what goes on 'runtimepath'. Derived here rather than passed separately
+            # so the plan row keeps Target/Link symmetric, exactly like the .gitconfig
+            # case deriving .gitignore_global from its own path.
+            $tree = ($fwd -replace '/init\.lua$', '')
+            @"
+-- ~\AppData\Local\nvim\init.lua — dotfiles-Windows shim (REAL FILE, deliberately
+-- not a symlink, in a REAL directory).
+--
+-- %LOCALAPPDATA%\nvim used to be a directory symlink onto the repo's nvim/ tree. Over
+-- ssh that made the editor start bare — netrw, no colorscheme, no plugins — because
+-- sshd inherits Redirection Guard from the Windows service lineage and refuses to
+-- traverse a reparse point into this repo. Reading a real file has no reparse point.
+-- See docs/REMOTE-ACCESS.md.
+--
+-- Edit the real config at $tree — not this file.
+
+local config = '$tree'
+local uv = vim.uv or vim.loop
+
+if not uv.fs_stat(config .. '/init.lua') then
+	vim.notify(
+		'dotfiles-Windows nvim config not found at ' .. config .. ' — re-run install.ps1.',
+		vim.log.levels.WARN
+	)
+	return
+end
+
+-- Prepend so require('gerrrt') resolves in the repo and wins over this shim dir;
+-- append after/ so a Core sync that adds one is not silently dropped. Neovim ignores
+-- a runtimepath entry that does not exist, so the append is safe today.
+vim.opt.runtimepath:prepend(config)
+vim.opt.runtimepath:append(config .. '/after')
+
+-- ...but that prepend does not survive on its own. lazy.nvim REPLACES 'runtimepath'
+-- wholesale inside lazy.setup() (performance.rtp.reset, on by default), rebuilding it
+-- from stdpath('config') — which is THIS directory, not the repo. Every module the
+-- config requires after that point becomes unfindable; the first symptom was
+-- tokyonight's on_highlights callback dying with "module 'gerrrt.utils.ui-highlights'
+-- not found". The config sets no performance.rtp.paths and cannot be edited from here
+-- (nvim/ is mirrored from dotfiles-core), so the shim survives the reset itself.
+--
+-- A searcher, APPENDED. Setting package.path would do nothing: Neovim replaces the
+-- stock path searcher with vim._load_package, and vim.loader.enable() then removes
+-- that and inserts its cached loaders at positions 2 and 3 — so nothing consults
+-- package.path. A searcher at the END is reached on a miss, and those inserts shift
+-- it rather than displacing it. Being last, it costs nothing until a lookup has
+-- already failed, and it can never shadow a plugin module.
+--
+-- This is what covers the window DURING lazy.setup(), where an eagerly-loaded spec
+-- (tokyonight is lazy = false, priority = 1000) runs before anything downstream of
+-- the setup call could put the path back.
+local searchers = package.loaders or package.searchers
+local luadir = config .. '/lua'
+table.insert(searchers, function(name)
+	local base = luadir .. '/' .. name:gsub('%.', '/')
+	for _, file in ipairs({ base .. '.lua', base .. '/init.lua' }) do
+		if uv.fs_stat(file) then
+			local chunk, err = loadfile(file)
+			if not chunk then
+				error(err)
+			end
+			return chunk
+		end
+	end
+	return "\n\tno file under " .. luadir
+end)
+
+-- lazy.nvim keeps its MUTABLE lockfile in stdpath('state') and seeds it once from
+-- stdpath('config')/lazy-lock.json. stdpath('config') is THIS directory now, which
+-- has no lockfile, so seed from the repo copy here instead — otherwise a fresh box
+-- resolves every plugin's default branch rather than starting from the fleet's pins.
+-- Best-effort: a failed seed is a slower first run, never a broken startup.
+local lockfile = vim.fs.joinpath(vim.fn.stdpath('state'), 'lazy-lock.json')
+local seed = config .. '/lazy-lock.json'
+if not uv.fs_stat(lockfile) and uv.fs_stat(seed) then
+	vim.fn.mkdir(vim.fn.stdpath('state'), 'p')
+	uv.fs_copyfile(seed, lockfile)
+end
+
+dofile(config .. '/init.lua')
+
+-- And put 'runtimepath' back, because the searcher above only answers require().
+-- Runtime FILE lookups go through 'runtimepath' — colors/, ftplugin/, syntax/,
+-- treesitter queries, :scriptnames, :checkhealth — and would still miss the repo.
+-- Safe after setup: lazy has already built its own rtp, and this only adds to it.
+vim.opt.runtimepath:prepend(config)
+vim.opt.runtimepath:append(config .. '/after')
 "@
         }
         'ssh config' {
@@ -557,6 +667,43 @@ function Test-StubIntoRepo {
     $content = Get-Content -LiteralPath $Link -Raw -ErrorAction SilentlyContinue
     if (-not $content) { return $false }
     return ($content -replace '\\', '/').Contains(($Root -replace '\\', '/'))
+}
+
+# --- Test-DotStubParentStale --------------------------------------------------
+# Must a stub's PARENT DIRECTORY be retired before the stub can be written into it?
+#
+# This exists because the nvim row wires a file inside a directory that USED to be
+# the linked thing: %LOCALAPPDATA%\nvim was a directory symlink onto <repo>\nvim.
+# Write a stub blindly into that and every path operation resolves THROUGH the link:
+# the "existing file" backed up is the repo's own init.lua, and the stub lands inside
+# the Core-mirrored tree. Silent, and it corrupts the one directory in this repo that
+# must stay byte-for-byte upstream. So the parent is checked first, always.
+#
+# Two shapes qualify, matching the two ways install.ps1 has ever wired a directory
+# row (Link-Item falls back to a recursive Copy-Item when Test-CanSymlink is false):
+#   • a reparse point — the symlink case;
+#   • a real directory holding entries that belong to the TARGET's tree — the copy
+#     case, where a stale lua\ beside the stub would sit on 'runtimepath' behind the
+#     repo, shadowed but visible in :scriptnames.
+#
+# Pure: the caller does the directory reads and this decides what they mean.
+# $TargetSiblings is what lives beside the stub's target in the repo, EXCLUDING the
+# target's own leaf — otherwise a correctly-wired stub (a lone init.lua) would look
+# stale to itself and be retired on every run.
+function Test-DotStubParentStale {
+    [OutputType([bool])]
+    param(
+        [bool]$IsReparsePoint,
+        [string[]]$ParentEntries  = @(),
+        [string[]]$TargetSiblings = @()
+    )
+    if ($IsReparsePoint) { return $true }
+    foreach ($entry in $ParentEntries) {
+        foreach ($sibling in $TargetSiblings) {
+            if ($entry -and $sibling -and $entry -ieq $sibling) { return $true }
+        }
+    }
+    return $false
 }
 
 # --- defensive output: NO_COLOR + non-Unicode terminals -----------------------

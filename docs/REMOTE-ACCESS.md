@@ -80,7 +80,7 @@ not for a repo you need to be able to edit as yourself.
 
 ### What this repo does instead
 
-Stop using reparse points for the configs that have to work over ssh. The three
+Stop using reparse points for the configs that have to work over ssh. The four
 that matter are wired as **real files** that pull in the repo copy through the
 config format's own include mechanism — same single source of truth, no reparse
 point. This is `Kind = 'Stub'` in `Get-DotfilesLinkPlan`
@@ -89,6 +89,7 @@ point. This is `Kind = 'Stub'` in `Get-DotfilesLinkPlan`
 | Config | Mechanism |
 | --- | --- |
 | `$PROFILE` | a real `.ps1` that dot-sources `powershell/profile.ps1` |
+| `%LOCALAPPDATA%\nvim\init.lua` | a real `init.lua` that prepends `<repo>/nvim` to `runtimepath` and `dofile()`s it |
 | `~/.gitconfig` | `[include] path = <repo>/git/.gitconfig` |
 | `~/.ssh/config` | `Include <repo>\ssh\config`, on the first line |
 
@@ -96,7 +97,7 @@ Everything else stays a symlink, either because the format has no include
 directive (`.gitignore_global`) or because it is only ever used interactively
 (Windows Terminal, GlazeWM, Zebar).
 
-Two consequences worth knowing:
+Three consequences worth knowing:
 
 - **`~/.gitignore_global` stays a symlink on purpose.** A `.gitignore` has
   nothing to include, so the `.gitconfig` stub instead overrides
@@ -105,6 +106,48 @@ Two consequences worth knowing:
 - **`~/.ssh/config` bites twice.** As a symlink it also stalls the ssh **client**
   on the host itself, because `ssh.exe` reads it at startup and inherits the same
   enforcement. Symptom: a plain `ssh` hangs while `ssh -F NUL` returns instantly.
+- **nvim's reparse point was on the PARENT.** `%LOCALAPPDATA%\nvim` was a directory
+  symlink onto `nvim/`, so the wired path was the directory itself, not a file in it.
+  The symptom is unmistakable once seen: over ssh the editor starts bare — **netrw
+  and a black background** — because `init.lua` was never read, and this config
+  disables netrw and loads tokyonight eagerly. The stub form makes the *directory*
+  real and wires `init.lua` inside it.
+
+  **Prepending `runtimepath` is not enough on its own**, and this is the part worth
+  reading before touching the shim. lazy.nvim's `performance.rtp.reset` defaults to
+  **true**, and `lazy.setup()` therefore *replaces* `runtimepath` wholesale with a
+  list rebuilt from `stdpath('config')` — the shim directory. The prepend is gone
+  before an eagerly-loaded spec runs. Observed exactly once as: `netrw=1` and the
+  config clearly loading, then `Failed to run 'config' for tokyonight.nvim … module
+  'gerrrt.utils.ui-highlights' not found`. `performance.rtp.paths` would be the
+  supported answer, but it is set in `nvim/`, which is Core-owned.
+
+  So the shim survives the reset itself, two ways:
+
+  - **An appended `package.loaders` searcher** for `<repo>/nvim/lua`. Setting
+    `package.path` does nothing here — Neovim replaces the stock path searcher with
+    `vim._load_package`, and `vim.loader.enable()` removes that and `table.insert`s
+    its cached loaders at 2 and 3, so `package.path` is never consulted. A searcher
+    at the *end* is reached on a miss, is only shifted (never displaced) by those
+    inserts, costs nothing until a lookup has already failed, and cannot shadow a
+    plugin module. This is what covers the window *during* `lazy.setup()`.
+  - **Re-prepending `runtimepath` after the config returns**, because a searcher only
+    answers `require()`. `colors/`, `ftplugin/`, `syntax/`, treesitter queries,
+    `:scriptnames` and `:checkhealth` all go through `runtimepath`.
+
+  Two further knock-on effects. `stdpath('config')` is the shim directory rather than
+  the repo, so the shim seeds lazy.nvim's lockfile from `<repo>/nvim/lazy-lock.json`
+  itself (Core's `lazy.lua` seeds from `stdpath('config')`, which no longer holds
+  one) and `<leader>rc` opens the shim — also unfixable here. And the daily
+  `dotfiles-maint` task, Task Scheduler being `0x105` too, had been running
+  `nvim --headless +Lazy! sync` with no config at all.
+
+  A parent-side reparse point also breaks the obvious probe: asking whether the
+  *wired path* is a link answers "no" while the row is thoroughly broken. So
+  `dotfiles-doctor` walks the whole path (`Test-DotPathViaReparsePoint`), and
+  `install.ps1` retires such a parent before writing the stub (`Clear-StubParent`) —
+  without that, every path operation resolves through the old link and the shim
+  lands inside the Core-mirrored `nvim/` tree, dirtying it silently.
 
 Re-wire an existing box with:
 
