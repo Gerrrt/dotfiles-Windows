@@ -2,11 +2,12 @@
 # changes — the static-site equivalent of a cache purge. Receiving side:
 # dotfiles-web's deploy.yml (repository_dispatch: refresh) + its README.
 #
-# Setup (G2): with the fleet GitHub App configured (the FLEET_APP_ID variable +
-# FLEET_APP_PRIVATE_KEY secret — see dotfiles-core GITHUB-APP-AUTH.md) this mints a
-# short-lived dotfiles-web-scoped token for the dispatch. Fallback: a fine-grained PAT
-# with "Contents: Read and write" on dotgibson/dotfiles-web as a secret named
-# WEBHOOK_SECRET. With neither, this job no-ops.
+# AUTH (G2): the fleet GitHub App (the FLEET_APP_ID variable + FLEET_APP_PRIVATE_KEY
+# secret — see dotfiles-core GITHUB-APP-AUTH.md) mints a short-lived dotfiles-web-scoped
+# token for the dispatch. That is the ONLY auth: the legacy WEBHOOK_SECRET PAT was deleted
+# when G2 finished (dotfiles-core #683/#819). Two outcomes — with NO App ID or key the mint
+# is skipped and this job no-ops with a warning; but if the mint IS attempted and the App
+# cannot reach dotfiles-web, create-github-app-token fails the step and the job goes red.
 name: Refresh showcase
 
 on:
@@ -27,11 +28,11 @@ jobs:
     env:
       # Presence flag for the App key (value 'true'/'false', never the key): secrets can't be
       # tested in a step `if:`, but an env derived from a secret comparison can. Gates the mint
-      # so a partial App setup falls back cleanly to WEBHOOK_SECRET.
+      # so a repo without the key no-ops below instead of failing on an empty key.
       HAS_APP_KEY: ${{ secrets.FLEET_APP_PRIVATE_KEY != '' }}
     steps:
       # Mint a dotfiles-web-scoped token when the fleet App is configured (dotfiles-core
-      # GITHUB-APP-AUTH.md, G2); no App/key -> SKIPPED, dispatch falls back to WEBHOOK_SECRET.
+      # GITHUB-APP-AUTH.md, G2); no App/key -> SKIPPED, and the dispatch below no-ops.
       - name: Mint a scoped installation token (if the App is configured)
         id: app
         if: vars.FLEET_APP_ID != '' && env.HAS_APP_KEY == 'true'
@@ -43,11 +44,13 @@ jobs:
           repositories: dotfiles-web
       - name: Notify dotfiles-web to rebuild
         env:
-          TOKEN: ${{ steps.app.outputs.token || secrets.WEBHOOK_SECRET }}
+          TOKEN: ${{ steps.app.outputs.token }}
         run: |
           set -euo pipefail
+          # Empty TOKEN means the mint step was SKIPPED (no App ID / no key) — an attempted
+          # mint that fails errors in create-github-app-token and never reaches this step.
           if [ -z "${TOKEN:-}" ]; then
-            echo "::warning::no dispatch token (neither the fleet App nor WEBHOOK_SECRET) — skipping showcase refresh"
+            echo "::warning::App auth not configured here (no FLEET_APP_ID variable or FLEET_APP_PRIVATE_KEY secret) — skipping showcase refresh"
             exit 0
           fi
           curl -fsS -X POST \
