@@ -47,8 +47,10 @@ jobs:
           TOKEN: ${{ steps.app.outputs.token }}
         run: |
           set -euo pipefail
+          # Empty TOKEN means the mint step was SKIPPED (no App ID / no key) — an attempted
+          # mint that fails errors in create-github-app-token and never reaches this step.
           if [ -z "${TOKEN:-}" ]; then
-            echo "::warning::the fleet App minted no token here — skipping showcase refresh"
+            echo "::warning::App auth not configured here (no FLEET_APP_ID variable or FLEET_APP_PRIVATE_KEY secret) — skipping showcase refresh"
             exit 0
           fi
           curl -fsS -X POST \
