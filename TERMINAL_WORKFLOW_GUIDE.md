@@ -84,7 +84,7 @@ The dispatcher globs `core/*.ps1`, sorts by name, dot-sources each; then the sam
   behind both status pills, operator/VPN and power (§2.7).
 - **`40-maint.ps1`** — the Task-Scheduler maintenance control surface (`maint-*`). §7.2.
 - **`45-doctor.ps1`** — `dotfiles-doctor`. **`48-core.ps1`** — the `core` umbrella (`core help|doctor|
-  version|update`).
+  version|update [check]|maint <verb>`).
 
 ### 1.3 Where each class of state is set
 
