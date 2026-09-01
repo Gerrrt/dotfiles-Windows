@@ -9,7 +9,7 @@ interactive shortcuts; not all profile functions are listed here.
 
 The umbrella `core` verb, mirroring `dotfiles-core` on macOS/Linux so the same
 command works across the fleet. Thin dispatchers over the host's native verbs
-(`dothelp` / `dotfiles-doctor` / `up`), which stay canonical; the old names
+(`dothelp` / `dotfiles-doctor` / `up` / `update-check` / `maint-*`), which stay canonical; the old names
 still work. Kept aligned by dotfiles-core's `PARITY.md` + `parity-check.sh`.
 
 | Function | Purpose |
@@ -19,6 +19,8 @@ still work. Kept aligned by dotfiles-core's `PARITY.md` + `parity-check.sh`.
 | `core help [filter]` | The in-shell command index — same as `dothelp` |
 | `core version` | Print `dotfiles-Windows <rev>` (this layer's revision) |
 | `core update [-y]` | Apply scoop + winget updates — same as `up` |
+| `core update check` | Refresh the "updates available" nudge now — same as `update-check` |
+| `core maint <install\|run\|log\|status\|uninstall>` | The scheduled maintenance job — same as the `maint-*` verbs (`40-maint.ps1`); bare `core maint` lists them |
 | `core-doctor` / `core-help` / `core-version` | Standalone twins of the verbs above (match Core's `core-*` names) |
 
 ## Help (`55-help.ps1`)

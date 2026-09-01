@@ -6,6 +6,23 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+### Added
+
+- **The `core` front door reaches the second family: `core update check` and
+  `core maint <install|run|log|status|uninstall>` (dotgibson/dotfiles-core#684).**
+  Core's zsh dispatcher grew the same arms in the same change, and its `PARITY.md`
+  pins them as `aligned` rows enforced by `parity-check.sh` — so this lands FIRST,
+  or Core's gate would assert a pwsh half that did not exist yet. Additive only:
+  `up`, `update-check` and the five `maint-*` verbs keep working exactly as before,
+  and `core update -y` still belongs to `up` — only the literal word `check` in
+  first position is intercepted. A bare `core maint` (or `-h`/`--help`) prints the
+  family's usage line rather than erroring, the way a bare `core` is the index; an
+  unknown sub-verb gets its own did-you-mean (`core maint stauts` → `status`).
+  Every arm is an explicit call, never `& "maint-$v"`, because the load contract
+  is derived from literal command names and an indirect call would hide the
+  dependency. `Core.Tests.ps1` stubs the six new leaves and asserts routing, arg
+  forwarding, the bare-namespace usage, and that a typo dispatches nothing.
+
 ### Changed
 
 - **The module step no longer re-downloads modules it already has**, which is what
