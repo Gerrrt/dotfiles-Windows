@@ -131,6 +131,15 @@ Describe 'core front door — update check + maint family' {
         $out | Should -Match 'usage: core maint <install\|run\|log\|status\|uninstall>'
         $global:DotCoreCalls | Should -BeNullOrEmpty
     }
+    It 'accepts `core maint help` as the same usage (the top-level help alias)' {
+        $out = core maint help *>&1 | Out-String
+        $out | Should -Match 'usage: core maint <'
+        $global:DotCoreCalls | Should -BeNullOrEmpty
+    }
+    It 'forwards the remaining args after `core update check`' {
+        core update check -Verbose
+        $global:DotCoreCalls | Should -Contain 'update-check:-Verbose'
+    }
     It 'suggests the nearest maint sub-verb on a typo and does NOT dispatch' {
         $out = core maint stauts *>&1 | Out-String
         $out | Should -Match 'did you mean: core maint status'

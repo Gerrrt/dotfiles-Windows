@@ -2,7 +2,8 @@
 #  os/48-core.ps1  -  the `core` front door, for cross-fleet muscle memory.
 #
 #  On the Unix side (dotfiles-core) the umbrella verb is `core`:
-#      core help | doctor | version | update [check] | maint <install|run|log|status|uninstall>
+#      core help | core doctor | core version | core update [check]
+#      core maint <install|run|log|status|uninstall>
 #  with standalone twins `core-help` / `core-doctor` / `core-version`. A cross-
 #  platform operator moving between WSL-zsh and Windows-pwsh in the same day
 #  should reach for the SAME command on both — so this host replicates that
@@ -59,14 +60,18 @@ function global:core {
         '^update$' {
             # Only the literal word `check` in first position is intercepted; every
             # other argument (`-y`, `-n`) still belongs to `up`, exactly as before.
+            # Splat from a VARIABLE: `update-check @(...)` is an array literal passed as
+            # one positional argument, not a splat — the stub saw System.Object[].
             if ($rest.Count -gt 0 -and "$($rest[0])" -eq 'check') {
-                update-check @($rest | Select-Object -Skip 1); return
+                $urest = @($rest | Select-Object -Skip 1)
+                update-check @urest; return
             }
             up @rest; return
         }
         '^maint$' {
-            # Bare `core maint` (or -h/--help) lists the family — a namespace is help,
-            # not an error. An unknown sub-verb is an error with its own did-you-mean.
+            # Bare `core maint` (or help/-h/--help, the same aliases the top level takes)
+            # lists the family — a namespace is help, not an error. An unknown sub-verb
+            # is an error with its own did-you-mean.
             $msub  = if ($rest.Count) { [string]$rest[0] } else { '' }
             $mrest = @($rest | Select-Object -Skip 1)
             switch -Regex ($msub) {
@@ -75,14 +80,15 @@ function global:core {
                 '^log$'       { maint-log @mrest; return }
                 '^status$'    { maint-status @mrest; return }
                 '^uninstall$' { maint-uninstall @mrest; return }
-                '^(|-h|--help)$' {
+                '^(|-h|--help|help)$' {
                     Write-DotHost ("  usage: core maint <{0}>" -f ($maintVerbs -join '|')) -Color DarkGray
                     return
                 }
                 default {
                     Write-DotErr "core maint: unknown subcommand: $msub"
                     $near = $maintVerbs | Sort-Object { Get-DotLevenshtein $msub $_ } | Select-Object -First 1
-                    if ($near -and (Get-DotLevenshtein $msub $near) -le 3) {
+                    $dist = if ($near) { Get-DotLevenshtein $msub $near } else { [int]::MaxValue }
+                    if ($dist -le 3) {
                         Write-DotHost ("  did you mean: core maint {0}?" -f $near) -Color DarkYellow
                     }
                     Write-DotHost ("  usage: core maint <{0}>" -f ($maintVerbs -join '|')) -Color DarkGray
