@@ -370,6 +370,7 @@ the active pane stays the key-press target (used by `psmux-url.ps1`'s `capture-p
 | PSReadLine | `EditMode Vi` | modal editing (parity with zsh-vi-mode) | Vim keys at the prompt |
 | PSReadLine | `Up` / `Down` | `HistorySearchBackward/Forward` | Prefix-filtered history |
 | PSReadLine | `Tab` | `MenuComplete` | Cycle completion menu |
+| PSReadLine | `Ctrl+←` / `Ctrl+→` | `BackwardWord` / `NextWord` (both Vi modes) | Jump by word while editing |
 | PSReadLine | `Ctrl+t` | PSFzf file picker (lazy) | Insert a fuzzy-picked file |
 | PSReadLine | `Ctrl+r` | PSFzf fuzzy history (lazy) | Quick history search |
 | PSReadLine | `Ctrl+e` | `Invoke-AtuinSearch` | Atuin full-history TUI |

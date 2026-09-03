@@ -95,6 +95,24 @@ Describe 'repo hygiene' {
         $i = Get-Content (Join-Path $RepoRoot 'install.ps1') -Raw
         $i | Should -Match "notlike '\*\\\.git\\\*'"
     }
+    It '10-tools.ps1 binds Ctrl+arrow word movement explicitly, in both Vi tables' {
+        # #231: the "Ctrl+arrow word movement" comment used to sit above a line that only
+        # set Tab — nothing bound the chords, so the behaviour came from a PSReadLine
+        # DEFAULT. Core's parity-check.sh greps this file for PARITY.md's Word nav row,
+        # so keep a real needle here rather than a default nothing pins. NextWord (not
+        # ForwardWord) is the default and the match for zsh's forward-word.
+        $t = Get-Content (Join-Path $RepoRoot 'powershell/core/10-tools.ps1') -Raw
+        # Assert the EXACT literals, single-spaced: parity-check.sh matches with `grep -F`,
+        # so re-padding these lines for column alignment would break the row in Core with
+        # nothing here noticing. Twice each = the Vi Insert table plus the Command table
+        # (a bare -Key binds Insert only; Core binds viins AND vicmd).
+        foreach ($needle in '-Key Ctrl+LeftArrow -Function BackwardWord',
+                            '-Key Ctrl+RightArrow -Function NextWord') {
+            ([regex]::Matches($t, [regex]::Escape($needle))).Count |
+                Should -Be 2 -Because "parity-check.sh greps '$needle' verbatim, once per Vi table"
+        }
+        ([regex]::Matches($t, '-ViMode Command')).Count | Should -Be 2
+    }
     It 'Maintenance.ps1 has no garbled nested-hash comment' {
         $m = Get-Content (Join-Path $RepoRoot 'maint/Maintenance.ps1') -Raw
         $m | Should -Not -Match '#\s+#\s+#'
