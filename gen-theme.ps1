@@ -520,10 +520,10 @@ function Get-DotJsonSchemeRegion {
     for ($i = $arrStart; $i -le $arrEnd; $i++) {
         $s = Get-DotJsonStructural $Line[$i]
         if ($i -eq $arrStart) { $s = $s.Substring($s.IndexOf('[') + 1) }
-        if ($bd -ge 1 -and $Line[$i] -match $nameRe) { $isMatch = $true }
+        if ($bd -ge 1 -and $Line[$i] -cmatch $nameRe) { $isMatch = $true }
         foreach ($c in $s.ToCharArray()) {
             if ($c -eq '{') {
-                if ($bd -eq 0) { $objStart = $i; $isMatch = ($Line[$i] -match $nameRe) }
+                if ($bd -eq 0) { $objStart = $i; $isMatch = ($Line[$i] -cmatch $nameRe) }
                 $bd++
             } elseif ($c -eq '}') {
                 $bd--

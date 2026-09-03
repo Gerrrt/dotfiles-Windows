@@ -235,6 +235,11 @@ Describe 'Get-DotJsonSchemeRegion' {
     It 'returns null for a scheme that is not there' {
         Get-DotJsonSchemeRegion -Line $Doc -Scheme 'Nord' | Should -BeNullOrEmpty
     }
+    It 'does not select a scheme whose name differs only in case' {
+        # Scheme names are case-sensitive identifiers; targeting must be exact so a
+        # 'tokyo night' scheme could never be rewritten in place of 'Tokyo Night'.
+        Get-DotJsonSchemeRegion -Line $Doc -Scheme 'tokyo night' | Should -BeNullOrEmpty
+    }
     It 'returns null when the document has no schemes array at all' {
         Get-DotJsonSchemeRegion -Line @('{', '    "themes": []', '}') -Scheme 'Tokyo Night' |
             Should -BeNullOrEmpty
