@@ -6,6 +6,8 @@ so entries are grouped by theme rather than strict semver releases.
 
 ## [Unreleased]
 
+## [v1.7.0] - 2026-09-03
+
 ### Added
 
 - **`windows-terminal/settings.json`'s colour scheme is generated from
@@ -46,6 +48,123 @@ so entries are grouped by theme rather than strict semver releases.
   is derived from literal command names and an indirect call would hide the
   dependency. `Core.Tests.ps1` stubs the six new leaves and asserts routing, arg
   forwarding, the bare-namespace usage, and that a typo dispatches nothing.
+
+- **`Get-DotAccentSpec` — the accent half of theme parity, which this host simply did
+  not have.** Core's `zsh/05-ui.zsh` has `_CORE_ACCENT_SPEC` / `_CORE_MUTED_SPEC`, the
+  one place `$COLORTERM` is interpreted, with a truecolor tier and a hand-picked
+  256-colour fallback. `grep -rn 'CORE_ACCENT|AccentSpec' powershell/` returned nothing
+  here, so PARITY.md's accent row was a genuine gap rather than a drift. The pwsh twin
+  lives in `powershell/core/05-lib.ps1` beside `Get-DotAnsiSgr` and is generated from
+  the same palette. The two fallback forms deliberately disagree (SGR `111`/`103` vs
+  spec `75`/`244`); both are carried verbatim and neither is derived from the other.
+
+- **A `theme vendor` row in `dotfiles-doctor`.** The sibling of the `nvim vendor` and
+  `starship vendor` rows, and the one that matters most on a host: the palette is an
+  *input*, so a stale copy leaves every generated block perfectly self-consistent and
+  quietly a version behind the fleet, with nothing else on screen to say so.
+
+- **A drift gate on the maintenance runner's own step list.** `Maintenance.ps1` states
+  its steps in three places — the file header, the `-Help` block, and the actual
+  `Step` calls — and nothing kept them honest, so both prose copies had silently lost
+  the scoop junction step (the header had also lost `navi`). `tests/Maint.Tests.ps1`
+  now discovers the steps from the AST and fails when one is not documented in both,
+  with a bidirectional map assertion so a renamed or removed step cannot leave a stale
+  entry that passes forever. Both prose blocks are corrected.
+
+- **The scoop junction repair now covers every junction scoop makes, and runs on a
+  schedule.** #218 established the mechanism — Redirection Guard refuses a junction
+  *created* by a non-admin, trust is stamped at creation, so re-creating it elevated
+  is the only lever — and fixed `apps\<app>\current`. Two gaps remained.
+
+  **Scope.** scoop also wires persisted state back out of an app dir with junctions
+  into `scoop\persist\<app>\...` (`bat\themes`, `bat\syntaxes`, `btop-lhm\themes`,
+  `composer\cache`, `php\cli`, `syncthing\config`, the yt-dlp plugin dirs), and
+  `scoop\modules\gsudoModule` points into `apps\gsudo\current` from outside `apps\`
+  entirely — 15 further junctions on this host, created by the same non-admin scoop
+  process and untrusted for the same reason. Re-stamp only `current` and
+  `bat --list-themes` is still broken over ssh. The sweep is now every directory
+  reparse point under the scoop root; `-Recurse` does not descend *through* a reparse
+  point, so each physical junction is reported exactly once under its canonical path.
+
+  **It never actually ran.** The step is gated on elevation, and `dotfiles-maint` is
+  registered `RunLevel = Limited` — which is the open question issue #217 asked to
+  resolve first. `maint-install` now also registers `dotfiles-maint-scoop-junctions`,
+  running **as SYSTEM** an hour after the daily job. SYSTEM rather than the
+  interactive user at `RunLevel Highest`, because an Interactive task only runs while
+  someone is logged on and the case this fixes is nobody being; `-ScoopRoot` and
+  `-LogPath` are baked into the action since SYSTEM's profile paths are not the
+  user's. Sequencing is a time offset rather than an event trigger on the first task
+  completing, because `Microsoft-Windows-TaskScheduler/Operational` is disabled by
+  default and that subscription would never fire.
+
+  The daily task deliberately stays unelevated — `scoop update *` must not run as
+  admin. The sweep moved out of `Maintenance.ps1` into
+  `maint/Repair-ScoopJunctions.ps1` so the elevated task has an entry point; the
+  policy behind it is `Get-DotScoopJunctionPlan`, pure and unit-tested. Registering
+  an elevated task itself needs an elevated shell, so `maint-install` run unelevated
+  installs the daily task and says plainly that it skipped the other one.
+  `maint-status` reports both tasks with their run level; `maint-uninstall` removes
+  both.
+
+- **`wsl-ssh-config` — the client-side ssh_config for the distros behind this host.**
+  `docs/REMOTE-ACCESS.md` §4 told you to hand-write the `Host <distro>` block that
+  `Format-DotWslSshConfig` could already generate: the renderer, the port allocator
+  and the alias slug all shipped as tested module exports with nothing calling them.
+  `powershell/os/34-remote.ps1` is that caller.
+
+  Ports are allocated from the **sorted** distro list, because `wsl --list` reorders
+  on install / unregister / re-default and a port that moves is worse than no port —
+  it is already baked into ssh_config, into firewall rules and into muscle memory.
+  `-HostPort` reserves the port the Windows sshd actually answers on instead of
+  assuming 22; assume otherwise and a distro is handed the host's port, a collision
+  that stays invisible until that distro silently fails to bind. `-JumpHost` emits
+  the `ProxyJump` shape — one LAN port, distro ports on the host's loopback — rather
+  than a network-facing listener per distro.
+
+  It **prints and never writes**: the file this output belongs in lives on the
+  machine you ssh *from*, which by definition is not this one.
+
+  Reading the distro list back out of `wsl.exe` is the one impure step, and it is
+  impure in a way that bites — `wsl --list --quiet` emits UTF-16LE, which lands in
+  PowerShell as a string with a NUL between every character, so a naive reader finds
+  no distros on a box that has several. `WSL_UTF8=1` is set on the **child** only
+  (and restored, including the unset case, which must be removed rather than blanked),
+  with the NUL strip as the belt for builds that ignore the variable.
+
+  Still deliberately absent, and still a runbook rather than a script: standing sshd
+  up. The service, the firewall rules, the `HKLM` DefaultShell key, the boot task and
+  the power settings are machine-global state that varies per box.
+
+- **`Get-DotfilesStubContent`** and **`Test-StubIntoRepo`** (`powershell/core/05-lib.ps1`,
+  exported from the `Dotfiles` module) — the stub body renderer and the "is this wired?"
+  predicate for `Kind='Stub'` rows. `Test-StubIntoRepo` is a *reference* check, not an
+  equality check, so a user's own added lines survive a re-install; it compares with
+  forward slashes and uses `String.Contains` rather than `-like`, because it gates a
+  delete in `uninstall.ps1` and a `[` read as a wildcard would be a false positive.
+- **`powershell/Dotfiles/Remote.Helpers.ps1`** (+ `tests/Remote.Tests.ps1`) — pure logic
+  for reaching this host and the distros behind it: `Get-DotWslSshPlan` (a stable
+  distro->port map, sorted by name so a port never moves when you install or unregister
+  a distro), `Format-DotWslSshConfig` (the client-side ssh_config, direct or via
+  `ProxyJump`), `ConvertTo-DotSshAlias`, and `Get-DotRemoteWiringResult` — the triage
+  that says whether a wired config survives an ssh session.
+
+  `Get-DotWslSshPlan` takes the Windows sshd's port as a **parameter** rather than
+  assuming 22. A host that moved sshd off 22 is common, and assuming otherwise produces
+  a confident "port collision" diagnosis that is simply wrong.
+
+  Deliberately absent: anything that touches the service, registry, firewall, scheduled
+  tasks, or power settings. That is machine-global state which varies per box and is
+  better done by hand with eyes on it — the runbook is in `docs/REMOTE-ACCESS.md`.
+- **A `Remote (ssh) configs` row in `dotfiles-doctor`** — probes whether Redirection
+  Guard is enforced in the current session and reports any stub-kind config still wired
+  as a symlink. Only the actionable rows are listed: plain symlinks are also unreadable
+  over ssh under enforcement, but that has no fix at this layer, and listing all eleven
+  every run would bury the one you can do something about.
+- **`docs/REMOTE-ACCESS.md`** — the full diagnosis, the one-command way to confirm
+  Redirection Guard in a broken session, the list of fixes that do *not* work, the
+  scoop limitation, and a corrected WSL section (banner-grabbing to identify which
+  daemon is on which port; `who` rather than `ss` for per-distro attribution, since
+  `networkingMode=mirrored` makes `ss` show the host's whole peer list).
 
 ### Changed
 
@@ -104,6 +223,36 @@ so entries are grouped by theme rather than strict semver releases.
   defines. That is the check that would have caught `#16161e` and `#27a1b9` years
   earlier, and it is what catches those seven the day Core flips `style`.
 
+- **`install.ps1`** grows `Write-StubItem`, dispatching on the plan row's `Kind`. It
+  mirrors `Link-Item`'s contract deliberately — idempotent skip, back up before
+  overwrite, honour `-DryRun`, same stats — and the install summary gains a `stubbed`
+  line (emitted only when the caller tracks it, so an older stats bag renders unchanged).
+- **`uninstall.ps1`** now treats *either* shape as ours (symlink into the repo, or a
+  stub that references it), so it can no longer orphan the files `install.ps1` wrote.
+- **`dotfiles-doctor`** is `Kind`-aware: a stub row reports `stub -> repo`, and a
+  stub-kind row still wired as a symlink is flagged *"will not resolve over ssh"* with
+  the re-install fix. A symlinked profile is a warn, not a fail — nothing is broken
+  until you ssh in.
+
+- **`auto-tag.yml`'s Core pin moved from v4.12.0 to v5.0.2** — a major and eight minors
+  in one step, because nothing advances it automatically. This repo vendors no `core/`,
+  so it is absent from `scripts/os-repos.txt`: the fan-out never opens a PR here and
+  `make fleet-drift` cannot see it. The pin advances when a human moves it, and between
+  2026-08-16 and 2026-08-26 nobody did.
+
+  **Behaviourally this is a no-op, and it is worth being precise about why.**
+  `auto-tag-call.yml` and `scripts/auto-tag.sh` are byte-identical at v4.12.0 and v5.0.2
+  (`git rev-parse` on both blobs agrees), and the workflow re-checks-out dotfiles-core at
+  a moving alias for the scripts it runs — so this host was already executing the same
+  code as every "current" repo. What changes is that the recorded pin now matches what
+  actually runs, instead of reporting eighteen releases of drift that were not real.
+
+  The genuine defect the audit surfaced is upstream and is being fixed there: the
+  reusable workflows fetched their scripts from `v4` while every caller ran at `@v5`
+  (dotgibson/dotfiles-core#672). The comment above the pin now records that a SHA pin
+  freezes the workflow body but not the scripts it pulls, so the next reader does not
+  over-trust it.
+
 ### Removed
 
 - **The `navi repo update` maintenance step, which was never a real command.**
@@ -126,23 +275,28 @@ so entries are grouped by theme rather than strict semver releases.
   reinstall of the same version (2.24.0, matching the bucket, and navi is unpinned)
   restored it with the persisted `config.yaml` intact. Two independent faults were
   stacked behind one silently-passing step.
-### Added
-
-- **`Get-DotAccentSpec` — the accent half of theme parity, which this host simply did
-  not have.** Core's `zsh/05-ui.zsh` has `_CORE_ACCENT_SPEC` / `_CORE_MUTED_SPEC`, the
-  one place `$COLORTERM` is interpreted, with a truecolor tier and a hand-picked
-  256-colour fallback. `grep -rn 'CORE_ACCENT|AccentSpec' powershell/` returned nothing
-  here, so PARITY.md's accent row was a genuine gap rather than a drift. The pwsh twin
-  lives in `powershell/core/05-lib.ps1` beside `Get-DotAnsiSgr` and is generated from
-  the same palette. The two fallback forms deliberately disagree (SGR `111`/`103` vs
-  spec `75`/`244`); both are carried verbatim and neither is derived from the other.
-
-- **A `theme vendor` row in `dotfiles-doctor`.** The sibling of the `nvim vendor` and
-  `starship vendor` rows, and the one that matters most on a host: the palette is an
-  *input*, so a stale copy leaves every generated block perfectly self-consistent and
-  quietly a version behind the fleet, with nothing else on screen to say so.
 
 ### Fixed
+
+- **Ctrl+←/→ word movement was never actually bound — it was PSReadLine's default
+  showing through.** `10-tools.ps1`'s `# Ctrl+arrow word movement; Tab = menu complete`
+  comment sat above a line that bound only `Tab`, so the motion came from the built-in
+  key table and no user would ever have noticed. It mattered to the parity contract:
+  Core's `PARITY.md` marks the Word nav row `aligned`, but `parity-check.sh` had to give
+  the pwsh half a `-` sentinel and report it as a SKIP — the only row in the table
+  resting on a framework default rather than on something this repo states, and so the
+  only one a future PSReadLine or `-EditMode` change could move without any config
+  moving with it. The four new `Set-PSReadLineKeyHandler` lines are behaviour-preserving
+  by construction: **`NextWord`, not `ForwardWord`** is both PSReadLine's own default
+  under `-EditMode Vi` *and* `Windows`, and the match for zsh's `forward-word` — both
+  land the cursor on the **start of the next** word, where `ForwardWord` lands on the
+  end of the current one. Both Vi tables are pinned, since a bare `-Key` reaches the
+  insert table only and Core's `zsh/40-bindings.zsh` binds viins and vicmd both. They
+  are deliberately *not* column-aligned like the `Tab`/arrow lines above them:
+  `parity-check.sh` matches its needles with `grep -F`, so padding here would make the
+  Word nav row whitespace-brittle from another repo. (`powershell/core/10-tools.ps1`,
+  `tests/Repo.Tests.ps1`, `TERMINAL_WORKFLOW_GUIDE.md`; #231 → #238. Follow-up:
+  dotgibson/dotfiles-core#849)
 
 - **The nvim maintenance step had never done anything, and the log was built so it
   could not say so.** Found by reading `maint.log` to check whether the nvim wiring
@@ -332,84 +486,6 @@ so entries are grouped by theme rather than strict semver releases.
   `not installed`. (A self-check inside the daily run was tried and removed for
   exactly this reason: it would have reported a confident false failure every day.)
 
-### Added
-
-- **A drift gate on the maintenance runner's own step list.** `Maintenance.ps1` states
-  its steps in three places — the file header, the `-Help` block, and the actual
-  `Step` calls — and nothing kept them honest, so both prose copies had silently lost
-  the scoop junction step (the header had also lost `navi`). `tests/Maint.Tests.ps1`
-  now discovers the steps from the AST and fails when one is not documented in both,
-  with a bidirectional map assertion so a renamed or removed step cannot leave a stale
-  entry that passes forever. Both prose blocks are corrected.
-
-- **The scoop junction repair now covers every junction scoop makes, and runs on a
-  schedule.** #218 established the mechanism — Redirection Guard refuses a junction
-  *created* by a non-admin, trust is stamped at creation, so re-creating it elevated
-  is the only lever — and fixed `apps\<app>\current`. Two gaps remained.
-
-  **Scope.** scoop also wires persisted state back out of an app dir with junctions
-  into `scoop\persist\<app>\...` (`bat\themes`, `bat\syntaxes`, `btop-lhm\themes`,
-  `composer\cache`, `php\cli`, `syncthing\config`, the yt-dlp plugin dirs), and
-  `scoop\modules\gsudoModule` points into `apps\gsudo\current` from outside `apps\`
-  entirely — 15 further junctions on this host, created by the same non-admin scoop
-  process and untrusted for the same reason. Re-stamp only `current` and
-  `bat --list-themes` is still broken over ssh. The sweep is now every directory
-  reparse point under the scoop root; `-Recurse` does not descend *through* a reparse
-  point, so each physical junction is reported exactly once under its canonical path.
-
-  **It never actually ran.** The step is gated on elevation, and `dotfiles-maint` is
-  registered `RunLevel = Limited` — which is the open question issue #217 asked to
-  resolve first. `maint-install` now also registers `dotfiles-maint-scoop-junctions`,
-  running **as SYSTEM** an hour after the daily job. SYSTEM rather than the
-  interactive user at `RunLevel Highest`, because an Interactive task only runs while
-  someone is logged on and the case this fixes is nobody being; `-ScoopRoot` and
-  `-LogPath` are baked into the action since SYSTEM's profile paths are not the
-  user's. Sequencing is a time offset rather than an event trigger on the first task
-  completing, because `Microsoft-Windows-TaskScheduler/Operational` is disabled by
-  default and that subscription would never fire.
-
-  The daily task deliberately stays unelevated — `scoop update *` must not run as
-  admin. The sweep moved out of `Maintenance.ps1` into
-  `maint/Repair-ScoopJunctions.ps1` so the elevated task has an entry point; the
-  policy behind it is `Get-DotScoopJunctionPlan`, pure and unit-tested. Registering
-  an elevated task itself needs an elevated shell, so `maint-install` run unelevated
-  installs the daily task and says plainly that it skipped the other one.
-  `maint-status` reports both tasks with their run level; `maint-uninstall` removes
-  both.
-
-### Added
-
-- **`wsl-ssh-config` — the client-side ssh_config for the distros behind this host.**
-  `docs/REMOTE-ACCESS.md` §4 told you to hand-write the `Host <distro>` block that
-  `Format-DotWslSshConfig` could already generate: the renderer, the port allocator
-  and the alias slug all shipped as tested module exports with nothing calling them.
-  `powershell/os/34-remote.ps1` is that caller.
-
-  Ports are allocated from the **sorted** distro list, because `wsl --list` reorders
-  on install / unregister / re-default and a port that moves is worse than no port —
-  it is already baked into ssh_config, into firewall rules and into muscle memory.
-  `-HostPort` reserves the port the Windows sshd actually answers on instead of
-  assuming 22; assume otherwise and a distro is handed the host's port, a collision
-  that stays invisible until that distro silently fails to bind. `-JumpHost` emits
-  the `ProxyJump` shape — one LAN port, distro ports on the host's loopback — rather
-  than a network-facing listener per distro.
-
-  It **prints and never writes**: the file this output belongs in lives on the
-  machine you ssh *from*, which by definition is not this one.
-
-  Reading the distro list back out of `wsl.exe` is the one impure step, and it is
-  impure in a way that bites — `wsl --list --quiet` emits UTF-16LE, which lands in
-  PowerShell as a string with a NUL between every character, so a naive reader finds
-  no distros on a box that has several. `WSL_UTF8=1` is set on the **child** only
-  (and restored, including the unset case, which must be removed rather than blanked),
-  with the NUL strip as the belt for builds that ignore the variable.
-
-  Still deliberately absent, and still a runbook rather than a script: standing sshd
-  up. The service, the firewall rules, the `HKLM` DefaultShell key, the boot task and
-  the power settings are machine-global state that varies per box.
-
-### Fixed
-
 - **`hostip` returned an address no other machine could reach.** It took the first
   non-link-local IPv4 Windows reported, and on any box with a Hyper-V or WSL virtual
   switch that is `vEthernet (Default Switch)` — a `Manual` 172.x address that exists
@@ -506,71 +582,6 @@ so entries are grouped by theme rather than strict semver releases.
   so instead of going quietly green.
   (`nvim-sync.ps1`, `starship-sync.ps1`, `nvim/.core-ref`, `tests/_TestHelpers.ps1`,
   `tests/NvimSync.Tests.ps1`, `tests/StarshipSync.Tests.ps1`)
-
-### Added
-
-- **`Get-DotfilesStubContent`** and **`Test-StubIntoRepo`** (`powershell/core/05-lib.ps1`,
-  exported from the `Dotfiles` module) — the stub body renderer and the "is this wired?"
-  predicate for `Kind='Stub'` rows. `Test-StubIntoRepo` is a *reference* check, not an
-  equality check, so a user's own added lines survive a re-install; it compares with
-  forward slashes and uses `String.Contains` rather than `-like`, because it gates a
-  delete in `uninstall.ps1` and a `[` read as a wildcard would be a false positive.
-- **`powershell/Dotfiles/Remote.Helpers.ps1`** (+ `tests/Remote.Tests.ps1`) — pure logic
-  for reaching this host and the distros behind it: `Get-DotWslSshPlan` (a stable
-  distro->port map, sorted by name so a port never moves when you install or unregister
-  a distro), `Format-DotWslSshConfig` (the client-side ssh_config, direct or via
-  `ProxyJump`), `ConvertTo-DotSshAlias`, and `Get-DotRemoteWiringResult` — the triage
-  that says whether a wired config survives an ssh session.
-
-  `Get-DotWslSshPlan` takes the Windows sshd's port as a **parameter** rather than
-  assuming 22. A host that moved sshd off 22 is common, and assuming otherwise produces
-  a confident "port collision" diagnosis that is simply wrong.
-
-  Deliberately absent: anything that touches the service, registry, firewall, scheduled
-  tasks, or power settings. That is machine-global state which varies per box and is
-  better done by hand with eyes on it — the runbook is in `docs/REMOTE-ACCESS.md`.
-- **A `Remote (ssh) configs` row in `dotfiles-doctor`** — probes whether Redirection
-  Guard is enforced in the current session and reports any stub-kind config still wired
-  as a symlink. Only the actionable rows are listed: plain symlinks are also unreadable
-  over ssh under enforcement, but that has no fix at this layer, and listing all eleven
-  every run would bury the one you can do something about.
-- **`docs/REMOTE-ACCESS.md`** — the full diagnosis, the one-command way to confirm
-  Redirection Guard in a broken session, the list of fixes that do *not* work, the
-  scoop limitation, and a corrected WSL section (banner-grabbing to identify which
-  daemon is on which port; `who` rather than `ss` for per-distro attribution, since
-  `networkingMode=mirrored` makes `ss` show the host's whole peer list).
-
-### Changed
-
-- **`install.ps1`** grows `Write-StubItem`, dispatching on the plan row's `Kind`. It
-  mirrors `Link-Item`'s contract deliberately — idempotent skip, back up before
-  overwrite, honour `-DryRun`, same stats — and the install summary gains a `stubbed`
-  line (emitted only when the caller tracks it, so an older stats bag renders unchanged).
-- **`uninstall.ps1`** now treats *either* shape as ours (symlink into the repo, or a
-  stub that references it), so it can no longer orphan the files `install.ps1` wrote.
-- **`dotfiles-doctor`** is `Kind`-aware: a stub row reports `stub -> repo`, and a
-  stub-kind row still wired as a symlink is flagged *"will not resolve over ssh"* with
-  the re-install fix. A symlinked profile is a warn, not a fail — nothing is broken
-  until you ssh in.
-
-- **`auto-tag.yml`'s Core pin moved from v4.12.0 to v5.0.2** — a major and eight minors
-  in one step, because nothing advances it automatically. This repo vendors no `core/`,
-  so it is absent from `scripts/os-repos.txt`: the fan-out never opens a PR here and
-  `make fleet-drift` cannot see it. The pin advances when a human moves it, and between
-  2026-08-16 and 2026-08-26 nobody did.
-
-  **Behaviourally this is a no-op, and it is worth being precise about why.**
-  `auto-tag-call.yml` and `scripts/auto-tag.sh` are byte-identical at v4.12.0 and v5.0.2
-  (`git rev-parse` on both blobs agrees), and the workflow re-checks-out dotfiles-core at
-  a moving alias for the scripts it runs — so this host was already executing the same
-  code as every "current" repo. What changes is that the recorded pin now matches what
-  actually runs, instead of reporting eighteen releases of drift that were not real.
-
-  The genuine defect the audit surfaced is upstream and is being fixed there: the
-  reusable workflows fetched their scripts from `v4` while every caller ran at `@v5`
-  (dotgibson/dotfiles-core#672). The comment above the pin now records that a SHA pin
-  freezes the workflow body but not the scripts it pulls, so the next reader does not
-  over-trust it.
 
 ### Docs
 
