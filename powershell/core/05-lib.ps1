@@ -949,7 +949,7 @@ function Get-DotAnsiSgr {
 # --- Get-DotAccentSpec --------------------------------------------------------
 # The pwsh twin of Core's _CORE_ACCENT_SPEC / _CORE_MUTED_SPEC (zsh/05-ui.zsh): the
 # ONE place $COLORTERM is interpreted for the branded accent + muted grey. Before
-# #228 this host had no equivalent at all — `grep -rn 'CORE_ACCENT|AccentSpec'
+# #228 this host had no equivalent at all — `grep -rnE 'CORE_ACCENT|AccentSpec'
 # powershell/` returned nothing — which is why PARITY.md's accent half was a genuine
 # GAP rather than a drift.
 #
