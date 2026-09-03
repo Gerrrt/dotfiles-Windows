@@ -113,8 +113,8 @@ function Get-StarshipVendorDetail {
 # pin like starship's, so it takes the same -Pinned argument.
 #
 # This one is worth MORE than the other two on a host, because the palette is an
-# INPUT rather than a leaf config: gen-theme.ps1 renders it into nine blocks across
-# six files. A stale palette here does not look stale — every generated block is
+# INPUT rather than a leaf config: gen-theme.ps1 renders it into ten blocks across
+# seven files. A stale palette here does not look stale — every generated block is
 # perfectly consistent with it, and the terminal layer is simply a version behind
 # the fleet with nothing on screen to say so. Pure (the file read lives in the
 # probe), so the formatting is unit-tested.

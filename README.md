@@ -205,8 +205,10 @@ the vendored-Core OS repos:
    `starship-sync.ps1` / `theme-sync.ps1`) — fix drift **upstream**, then re-sync,
    so the parity gate stays green.
 3. **Don't hand-edit a colour.** Every hex in `powershell/core/` and `psmux/` that
-   sits inside a `# core:theme:gen` marker is rendered from `theme/palette.toml` by
-   `gen-theme.ps1`; `gen-theme.ps1 -Check` fails the PR that edits one by hand.
+   sits inside a `# core:theme:gen` marker — and every colour in the `Tokyo Night`
+   scheme in `windows-terminal/settings.json` — is rendered from `theme/palette.toml`
+   by `gen-theme.ps1`; `gen-theme.ps1 -Check` fails the PR that edits one by hand.
+   Picking a colour in Windows Terminal's Settings pane counts.
 4. **Green the gate.** `tests/Invoke-Validation.ps1` is the fast, dependency-free
    check; `pwsh -NoProfile -File tests/Invoke-Tests.ps1` is the full gated suite
    (the exact command CI runs). `.githooks/pre-commit`

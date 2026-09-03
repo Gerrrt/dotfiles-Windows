@@ -8,7 +8,7 @@
 #  straight into theme/palette.toml can't silently fork the fleet's colour.
 #
 #  WHY THIS ONE MATTERS MORE THAN THE OTHER TWO. palette.toml is not just vendored,
-#  it is an INPUT: gen-theme.ps1 renders it into nine blocks across six files. A local
+#  it is an INPUT: gen-theme.ps1 renders it into ten blocks across seven files. A local
 #  edit here would not merely fork one config, it would fan a half-recoloured terminal
 #  layer out through a generator that faithfully reports success. The tempting local
 #  "fix" — nudge a hex here rather than in Core — is exactly what this refuses.

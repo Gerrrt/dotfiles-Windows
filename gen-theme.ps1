@@ -13,9 +13,11 @@
 #  reading the SAME theme/palette.toml (vendored here by theme-sync.ps1). Core owns
 #  the numbers; this renders them into the surfaces Core does not know about.
 #
-#  HOW. A consumer opts a region in with a marker pair naming a block id, in its own
-#  comment syntax — which is `#` for every target here (PowerShell and psmux.conf
-#  both), so unlike Core there is no second marker form:
+#  HOW. There are TWO KINDS of target, because one of them cannot carry a comment.
+#
+#  Kind 'markers' — the common case. A consumer opts a region in with a marker pair
+#  naming a block id, in its own comment syntax, which is `#` for every such target
+#  here (PowerShell and psmux.conf both):
 #
 #      # core:theme:gen fzf-colors
 #      ...rendered from theme/palette.toml...
@@ -24,6 +26,27 @@
 #  Anything OUTSIDE the markers is hand-authored and never touched. Leading
 #  indentation on the opening marker is captured and re-applied to every emitted
 #  line, which is what lets a block sit inside an @( ) array or an @{ } hashtable.
+#
+#  Kind 'json-scheme' — windows-terminal/settings.json, added in #230. It carries
+#  the repo's largest remaining hand-typed colour block (20 hexes) and CANNOT use a
+#  marker pair, for three independent reasons:
+#
+#    * The file is APP-OWNED AND LIVE. Get-DotfilesLinkPlan symlinks it into all
+#      three Windows Terminal flavours' LocalState, so the app rewrites THIS COPY
+#      whenever a setting changes in its UI — and its JSON writer strips comments.
+#      A `// core:theme:gen` marker would not survive the first toggle.
+#    * JSON has no comment syntax at all, and tests/Invoke-Validation.ps1 parses
+#      every *.json with ConvertFrom-Json, so a marker would fail the fast gate.
+#    * tests/Format-AppJson.ps1 deliberately does NOT re-indent this file, because
+#      the app re-serializes it with its own indent on every launch.
+#
+#  So that kind locates the scheme object BY ITS "name" (Windows Terminal sorts
+#  schemes alphabetically, so an array index is not stable) and rewrites the colour
+#  VALUES on the lines they already occupy — preserving indentation, key order and
+#  trailing commas byte for byte. Deliberately NOT ConvertFrom-Json | ConvertTo-Json:
+#  that reformats all 227 lines on every run, which is exactly the churn the
+#  no-re-indent carve-out exists to prevent. It also emits UPPERCASE hex, because
+#  that is what the app writes — lowercase would make every GUI round-trip a diff.
 #
 #  Unlike Core's bash version, NO HOISTING IS NEEDED. Core had to lift its fzf
 #  palette out of a single-quoted string because a `#` line inside one is an fzf
@@ -144,16 +167,23 @@ function ConvertTo-DotRgb {
 # drive this against a hermetic fixture holding one file per SHAPE rather than a copy
 # of the whole repo. In the real tree every file is present, so the "was this block
 # deleted?" check below still has full force there.
+#
+# Kind names which walker reads the row (see the header): 'markers' is a comment-marker
+# pair, 'json-scheme' is the structural JSON rewrite keyed on the scheme's own "name".
+# It is spelled out on every row rather than defaulted, so the registry stays what its
+# comment claims - the single declaration of what exists - now that the rows differ.
 $script:ThemeBlocks = @(
-    @{ Id = 'fzf-colors';            File = 'powershell/core/10-tools.ps1' }
-    @{ Id = 'psreadline-prediction'; File = 'powershell/core/10-tools.ps1' }
-    @{ Id = 'cmd-separator-colors';  File = 'powershell/core/10-tools.ps1' }
-    @{ Id = 'ansi-sgr-palette';      File = 'powershell/core/05-lib.ps1' }
-    @{ Id = 'accent-tiers';          File = 'powershell/core/05-lib.ps1' }
-    @{ Id = 'psmux-palette';         File = 'psmux/psmux.conf' }
-    @{ Id = 'netinfo-palette';       File = 'psmux/scripts/psmux-netinfo.ps1' }
-    @{ Id = 'power-palette';         File = 'psmux/scripts/psmux-power.ps1' }
-    @{ Id = 'cheat-sgr';             File = 'psmux/scripts/psmux-cheat.ps1' }
+    @{ Id = 'fzf-colors';            Kind = 'markers'; File = 'powershell/core/10-tools.ps1' }
+    @{ Id = 'psreadline-prediction'; Kind = 'markers'; File = 'powershell/core/10-tools.ps1' }
+    @{ Id = 'cmd-separator-colors';  Kind = 'markers'; File = 'powershell/core/10-tools.ps1' }
+    @{ Id = 'ansi-sgr-palette';      Kind = 'markers'; File = 'powershell/core/05-lib.ps1' }
+    @{ Id = 'accent-tiers';          Kind = 'markers'; File = 'powershell/core/05-lib.ps1' }
+    @{ Id = 'psmux-palette';         Kind = 'markers'; File = 'psmux/psmux.conf' }
+    @{ Id = 'netinfo-palette';       Kind = 'markers'; File = 'psmux/scripts/psmux-netinfo.ps1' }
+    @{ Id = 'power-palette';         Kind = 'markers'; File = 'psmux/scripts/psmux-power.ps1' }
+    @{ Id = 'cheat-sgr';             Kind = 'markers'; File = 'psmux/scripts/psmux-cheat.ps1' }
+    @{ Id = 'terminal-scheme';       Kind = 'json-scheme'; File = 'windows-terminal/settings.json'
+       Scheme = 'Tokyo Night' }
 )
 
 # ── emitters: one scriptblock per block id ───────────────────────────────────
@@ -325,6 +355,56 @@ $script:ThemeEmitters = @{
     }
 }
 
+# ── emitters: the 'json-scheme' kind ─────────────────────────────────────────
+# A DIFFERENT CONTRACT from the table above, and deliberately so. A marker emitter
+# returns LINES, because it owns its target's syntax. A json-scheme emitter returns a
+# KEY -> HEX map and owns nothing else: the quoting, the four-space indent, the key
+# order and the trailing commas are Windows Terminal's, and Set-DotJsonSchemeColor
+# below re-emits them verbatim rather than re-deriving them. An emitter that returned
+# lines here would have to reproduce the app's serializer, and would be wrong the day
+# the app changes it.
+#
+# This is still a literal picture of its target, not the declarative colour DSL the
+# section above argues against - the same [ordered] key map psmux-palette and
+# ansi-sgr-palette already use.
+$script:ThemeJsonEmitters = @{
+
+    # windows-terminal/settings.json - the "Tokyo Night" scheme's 20 colours.
+    #
+    # UPPERCASE IS LOAD-BEARING, not a style choice. The app writes uppercase hex, and
+    # it owns this file (see the header): emitting lowercase would mean every launch
+    # rewrote all 20 values back, turning a settings toggle into a 20-line colour diff -
+    # precisely the churn tests/Format-AppJson.ps1's no-re-indent rule exists to avoid.
+    # theme/palette.toml stays lowercase; Test-DotPalette enforces that. Upcase HERE.
+    #
+    # `background` and `selectionBackground` were #1A1B26 and #28344A before #230 -
+    # tokyonight NIGHT values, in a palette pinned to storm. #229 hit the same two hexes
+    # twice more (ListPredictionSelected, Get-DotAnsiSgr's Black) and adopted Core's
+    # value each time; these were the last two left. The terminal's selection now agrees
+    # with PSReadLine's prediction bar, and its canvas with psmux's @tn_bg.
+    #
+    # `name` is deliberately absent from the map, so the writer never touches it - it is
+    # also the key the region lookup matches on.
+    'terminal-scheme' = {
+        param([hashtable]$p)
+        $map = [ordered]@{
+            background   = 'bg';      black       = 'terminal_black'
+            blue         = 'blue';    brightBlack = 'terminal_black'
+            brightBlue   = 'blue';    brightCyan  = 'cyan'
+            brightGreen  = 'green';   brightPurple = 'magenta'
+            brightRed    = 'red';     brightWhite = 'fg'
+            brightYellow = 'yellow';  cursorColor = 'fg'
+            cyan         = 'cyan';    foreground  = 'fg_dark'
+            green        = 'green';   purple      = 'magenta'
+            red          = 'red';     selectionBackground = 'bg_visual'
+            white        = 'fg';      yellow      = 'yellow'
+        }
+        $out = [ordered]@{}
+        foreach ($k in $map.Keys) { $out[$k] = (Get-PalColor $p $map[$k]).ToUpperInvariant() }
+        $out
+    }
+}
+
 # ── the line walker ──────────────────────────────────────────────────────────
 
 # --- Get-DotThemeRegion -------------------------------------------------------
@@ -375,6 +455,133 @@ function Get-DotThemeDrift {
         Expected = $e
         InSync   = (($a -join "`n") -eq ($e -join "`n"))
     }
+}
+
+# ── the JSON walker ──────────────────────────────────────────────────────────
+# The 'json-scheme' counterpart of the three functions above: locate a region, decide
+# the drift, rewrite the values. Same purity discipline - no IO, verdicts returned
+# rather than written - so the test suite can drive them without a fixture tree.
+
+# --- Get-DotJsonStructural ----------------------------------------------------
+# Blank out every quoted string so the bracket/brace walk below counts NESTING only.
+# Load-bearing: this file's profile guids are "{574e775e-4f2a-...}" and its wsl profile
+# carries "--distribution-id {4d88cd54-...}". Counting those as nesting would end a
+# region in the wrong place, and the failure would be a silently mis-targeted rewrite
+# rather than an error. Escapes are honoured so a \" inside a value cannot re-open one.
+function Get-DotJsonStructural {
+    [OutputType([string])]
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+    return [regex]::Replace($Text, '"(\\.|[^"\\])*"', '""')
+}
+
+# --- Get-DotJsonSchemeRegion --------------------------------------------------
+# Locate a colour scheme by its own "name" and return { Start; End } as 0-based line
+# indices of its opening { and closing }. $null when no scheme carries that name.
+#
+# KEYED ON THE NAME, NOT AN INDEX, because Windows Terminal re-sorts the schemes array
+# alphabetically on every rewrite - a position that is right today is a different scheme
+# the moment someone adds one.
+#
+# SCOPED TO THE schemes ARRAY, which is the other half of the same point: every entry in
+# profiles.list has a "name" too, so an unscoped search for "name": "Tokyo Night" would
+# happily rewrite a PROFILE that happened to share the scheme's name.
+#
+# Throws on an unterminated array rather than guessing, exactly as Get-DotThemeRegion
+# does: the alternative is truncating the rest of the document.
+function Get-DotJsonSchemeRegion {
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Line,
+        [Parameter(Mandatory)][string]$Scheme
+    )
+    $key = -1
+    for ($i = 0; $i -lt $Line.Count; $i++) {
+        if ($Line[$i] -match '^\s*"schemes"\s*:') { $key = $i; break }
+    }
+    if ($key -lt 0) { return $null }
+
+    # The app writes the '[' on the line AFTER the key; tolerate it on the same line.
+    $depth = 0; $arrStart = -1; $arrEnd = -1
+    for ($i = $key; $i -le $Line.Count - 1; $i++) {
+        $s = Get-DotJsonStructural $Line[$i]
+        if ($i -eq $key) { $s = $s.Substring($s.IndexOf(':') + 1) }
+        foreach ($c in $s.ToCharArray()) {
+            if ($c -eq '[') { if ($arrStart -lt 0) { $arrStart = $i }; $depth++ }
+            elseif ($c -eq ']') { $depth--; if ($arrStart -ge 0 -and $depth -le 0) { $arrEnd = $i; break } }
+        }
+        if ($arrEnd -ge 0) { break }
+    }
+    if ($arrStart -lt 0 -or $arrEnd -lt 0) { throw 'unterminated "schemes" array' }
+
+    # Objects at depth 1 inside it. Brace-counted rather than "the next }", so a nested
+    # object inside a scheme could not end the region early.
+    $nameRe = '^\s*"name"\s*:\s*"' + [regex]::Escape($Scheme) + '"\s*,?\s*$'
+    $bd = 0; $objStart = -1; $isMatch = $false
+    for ($i = $arrStart; $i -le $arrEnd; $i++) {
+        $s = Get-DotJsonStructural $Line[$i]
+        if ($i -eq $arrStart) { $s = $s.Substring($s.IndexOf('[') + 1) }
+        if ($bd -ge 1 -and $Line[$i] -match $nameRe) { $isMatch = $true }
+        foreach ($c in $s.ToCharArray()) {
+            if ($c -eq '{') {
+                if ($bd -eq 0) { $objStart = $i; $isMatch = ($Line[$i] -match $nameRe) }
+                $bd++
+            } elseif ($c -eq '}') {
+                $bd--
+                if ($bd -le 0) {
+                    if ($isMatch -and $objStart -ge 0) { return [pscustomobject]@{ Start = $objStart; End = $i } }
+                    $bd = 0; $objStart = -1; $isMatch = $false
+                }
+            }
+        }
+    }
+    return $null
+}
+
+# --- Set-DotJsonSchemeColor ---------------------------------------------------
+# Rewrite the colour VALUES inside [Start..End] from $Color (key -> hex), and report
+# what moved. Returns { Lines; Changed; Missing }; in sync means both Changed and
+# Missing are empty. Pure - $Line is not mutated.
+#
+# LINE-SCOPED, NOT A RESERIALIZE. Groups 1/3/5 - the indentation, the ": " and the
+# trailing comma - are re-emitted verbatim, so the only bytes that move are the six
+# hex digits. ConvertFrom-Json | ConvertTo-Json would reformat all 227 lines on every
+# run (the app's writer puts '[' on its own line and indents four; ConvertTo-Json does
+# neither), which is the churn tests/Format-AppJson.ps1's no-re-indent rule exists to
+# prevent. It would also drop the file's key order, which is the app's, not ours.
+#
+# The comparison is -ceq, CASE-SENSITIVE on purpose: the app writes uppercase and the
+# palette is lowercase, so "already correct but lowercase" is drift we want to fix once
+# rather than let the app fix on every launch.
+#
+# A key present in $Color but absent from the object is reported in Missing, never
+# inserted. Guessing where it belongs means guessing the app's sort order; the caller
+# treats it as structural instead.
+function Set-DotJsonSchemeColor {
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Line,
+        [Parameter(Mandatory)][int]$Start,
+        [Parameter(Mandatory)][int]$End,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Color
+    )
+    $out = [string[]]::new($Line.Count)
+    if ($Line.Count) { [Array]::Copy($Line, $out, $Line.Count) }
+    $changed = [System.Collections.Generic.List[pscustomobject]]::new()
+    $seen = @{}
+    for ($i = $Start; $i -le $End -and $i -lt $Line.Count; $i++) {
+        if ($Line[$i] -match '^(\s*)"([A-Za-z0-9_]+)"(\s*:\s*)"(#[0-9a-fA-F]{6})"(\s*,?\s*)$') {
+            $indent = $Matches[1]; $k = $Matches[2]; $sep = $Matches[3]
+            $have = $Matches[4]; $tail = $Matches[5]
+            if (-not $Color.Contains($k)) { continue }
+            $seen[$k] = $true
+            $want = [string]$Color[$k]
+            if ($have -ceq $want) { continue }
+            $changed.Add([pscustomobject]@{ Key = $k; Actual = $have; Expected = $want })
+            $out[$i] = '{0}"{1}"{2}"{3}"{4}' -f $indent, $k, $sep, $want, $tail
+        }
+    }
+    $missing = @(foreach ($k in $Color.Keys) { if (-not $seen[$k]) { $k } })
+    return [pscustomobject]@{ Lines = $out; Changed = $changed.ToArray(); Missing = $missing }
 }
 
 # --- Get-DotResidualHex -------------------------------------------------------
@@ -474,6 +681,49 @@ foreach ($group in ($script:ThemeBlocks | Group-Object File)) {
     $touched = $false
 
     foreach ($block in $group.Group) {
+        # ---- kind 'json-scheme' ------------------------------------------------
+        # Same shape as the marker arm below - locate, diff, rewrite - but over a JSON
+        # object found by name rather than a comment-delimited line range. It reuses the
+        # file already read above and the same $touched flag, so a target of either kind
+        # is still read and written exactly once.
+        if ($block.Kind -eq 'json-scheme') {
+            $emit = $script:ThemeJsonEmitters[$block.Id]
+            if (-not $emit) { Write-Host "  gen-theme: no JSON emitter for block id '$($block.Id)'" -ForegroundColor Red; Set-Rc 2; continue }
+            try { $region = Get-DotJsonSchemeRegion -Line $lines.ToArray() -Scheme $block.Scheme }
+            catch { Write-Host "  $rel : $($_.Exception.Message)" -ForegroundColor Red; Set-Rc 2; continue }
+            if (-not $region) {
+                # The scheme was renamed or deleted - the JSON twin of "the marker pair is
+                # gone from a file that still exists".
+                Write-Host "  $rel : no colour scheme named '$($block.Scheme)'" -ForegroundColor Red
+                Set-Rc 2; continue
+            }
+            $patch = Set-DotJsonSchemeColor -Line $lines.ToArray() -Start $region.Start -End $region.End -Color (& $emit $palette)
+            if ($patch.Missing.Count) {
+                # STRUCTURAL, not drift: a key the generator owns is not there to compare
+                # against, and inserting it would mean guessing the app's sort order.
+                Write-Host "  $rel : scheme '$($block.Scheme)' has no $($patch.Missing -join ', ') key" -ForegroundColor Red
+                Set-Rc 2; continue
+            }
+            if (-not $patch.Changed.Count) { continue }
+
+            if ($Check) {
+                # Per CHANGED KEY, not the whole 20-line object: one moved hex should
+                # print one pair, or the diff buries the value it is reporting.
+                Write-Host "  DRIFT $rel [$($block.Id)]" -ForegroundColor Red
+                foreach ($c in $patch.Changed) {
+                    Write-Host "    - `"$($c.Key)`": `"$($c.Actual)`""   -ForegroundColor DarkRed
+                    Write-Host "    + `"$($c.Key)`": `"$($c.Expected)`"" -ForegroundColor DarkGreen
+                }
+                Set-Rc 1
+            } else {
+                $lines.Clear(); $lines.AddRange([string[]]$patch.Lines)
+                Write-Host "  wrote $rel [$($block.Id)]" -ForegroundColor Green
+                $touched = $true
+            }
+            continue
+        }
+
+        # ---- kind 'markers' ----------------------------------------------------
         $emit = $script:ThemeEmitters[$block.Id]
         if (-not $emit) { Write-Host "  gen-theme: no emitter for block id '$($block.Id)'" -ForegroundColor Red; Set-Rc 2; continue }
         try { $region = Get-DotThemeRegion -Line $lines.ToArray() -Id $block.Id }
@@ -521,6 +771,8 @@ if ($Check) {
         Write-Host ''
         Write-Host 'gen-theme: DRIFT. Run: pwsh -NoProfile -File ./gen-theme.ps1' -ForegroundColor Red
         Write-Host '  (do not hand-edit a generated block - the next run will overwrite it)' -ForegroundColor DarkGray
+        Write-Host "  (picking a colour in Windows Terminal's Settings pane counts as a hand-edit:" -ForegroundColor DarkGray
+        Write-Host '   change it in Core, then theme-sync.ps1 and gen-theme.ps1)' -ForegroundColor DarkGray
     }
 } elseif ($rc -eq 0) {
     Write-Host 'gen-theme: done. Review `git diff`, then commit.' -ForegroundColor Green
