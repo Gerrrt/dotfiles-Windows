@@ -161,6 +161,147 @@ Describe 'Get-DotThemeDrift' {
     }
 }
 
+Describe 'Get-DotJsonStructural' {
+    It 'blanks a quoted string so its braces are not counted as nesting' {
+        # THE REGRESSION THIS GUARDS: settings.json is full of "{574e775e-...}" profile
+        # guids. Counting those as nesting ends a region in the wrong place, and the
+        # symptom is a silently mis-targeted rewrite rather than an error.
+        Get-DotJsonStructural '"guid": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",' | Should -Be '"": "",'
+    }
+    It 'leaves real structural characters alone' {
+        Get-DotJsonStructural '        {' | Should -Be '        {'
+    }
+    It 'honours a backslash escape so a \" cannot re-open a string' {
+        Get-DotJsonStructural '"a\"{": "b"' | Should -Be '"": ""'
+    }
+}
+
+Describe 'Get-DotJsonSchemeRegion' {
+    BeforeAll {
+        # Windows Terminal's OWN serializer style: '[' and '{' on the line AFTER the key,
+        # four-space indent, keys alphabetical, uppercase hex. Two traps are deliberate —
+        # a PROFILE named the same as the target scheme, and a scheme whose NAME contains
+        # a brace.
+        $Doc = @(
+            '{'
+            '    "profiles":'
+            '    {'
+            '        "list":'
+            '        ['
+            '            {'
+            '                "guid": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",'
+            '                "name": "Tokyo Night"'
+            '            }'
+            '        ]'
+            '    },'
+            '    "schemes":'
+            '    ['
+            '        {'
+            '            "background": "#1f2335",'
+            '            "name": "Campbell {legacy}"'
+            '        },'
+            '        {'
+            '            "background": "#000000",'
+            '            "name": "Tokyo Night"'
+            '        }'
+            '    ],'
+            '    "themes": []'
+            '}'
+        )
+    }
+    It 'finds the scheme by name and brackets its own braces' {
+        $r = Get-DotJsonSchemeRegion -Line $Doc -Scheme 'Tokyo Night'
+        $Doc[$r.Start].Trim() | Should -Be '{'
+        $Doc[$r.End].Trim()   | Should -Be '}'
+        ($Doc[$r.Start..$r.End] -join "`n") | Should -Match '"background": "#000000"'
+    }
+    It 'does not pick a PROFILE that shares the scheme name' {
+        # An unscoped search for "name": "Tokyo Night" matches the profile first, and
+        # would rewrite colours into profiles.list. This is why the walk is scoped to
+        # the schemes array.
+        $r = Get-DotJsonSchemeRegion -Line $Doc -Scheme 'Tokyo Night'
+        ($Doc[$r.Start..$r.End] -join "`n") | Should -Not -Match 'guid'
+    }
+    It 'is not derailed by a brace inside an earlier scheme name' {
+        # If the string-stripper failed, "Campbell {legacy}" would leave brace depth at 1
+        # and the target's region would run to the wrong line.
+        $r = Get-DotJsonSchemeRegion -Line $Doc -Scheme 'Tokyo Night'
+        ($r.End - $r.Start) | Should -Be 3
+    }
+    It 'finds a scheme whose own name carries a brace' {
+        $r = Get-DotJsonSchemeRegion -Line $Doc -Scheme 'Campbell {legacy}'
+        ($Doc[$r.Start..$r.End] -join "`n") | Should -Match '#1f2335'
+    }
+    It 'returns null for a scheme that is not there' {
+        Get-DotJsonSchemeRegion -Line $Doc -Scheme 'Nord' | Should -BeNullOrEmpty
+    }
+    It 'does not select a scheme whose name differs only in case' {
+        # Scheme names are case-sensitive identifiers; targeting must be exact so a
+        # 'tokyo night' scheme could never be rewritten in place of 'Tokyo Night'.
+        Get-DotJsonSchemeRegion -Line $Doc -Scheme 'tokyo night' | Should -BeNullOrEmpty
+    }
+    It 'returns null when the document has no schemes array at all' {
+        Get-DotJsonSchemeRegion -Line @('{', '    "themes": []', '}') -Scheme 'Tokyo Night' |
+            Should -BeNullOrEmpty
+    }
+    It 'throws on an unterminated schemes array rather than rewriting to EOF' {
+        # Same contract as Get-DotThemeRegion: guessing the end destroys the rest of the
+        # document.
+        { Get-DotJsonSchemeRegion -Line @('{', '    "schemes":', '    [', '        {') -Scheme 'x' } |
+            Should -Throw
+    }
+}
+
+Describe 'Set-DotJsonSchemeColor' {
+    BeforeAll {
+        $Obj = @(
+            '        {'
+            '            "background": "#000000",'
+            '            "cyan": "#7dcfff",'
+            '            "name": "Tokyo Night",'
+            '            "red": "#F7768E"'
+            '        }'
+        )
+        $Want = [ordered]@{ background = '#24283B'; cyan = '#7DCFFF'; red = '#F7768E' }
+    }
+    It 'replaces the hex and preserves indentation and the trailing comma' {
+        $r = Set-DotJsonSchemeColor -Line $Obj -Start 0 -End 5 -Color $Want
+        $r.Lines[1] | Should -BeExactly '            "background": "#24283B",'
+    }
+    It 'upcases a value that is already correct but lowercase' {
+        # The app writes uppercase. A lowercase value is drift we fix ONCE here, rather
+        # than let the app rewrite on every launch.
+        $r = Set-DotJsonSchemeColor -Line $Obj -Start 0 -End 5 -Color $Want
+        $r.Lines[2] | Should -BeExactly '            "cyan": "#7DCFFF",'
+    }
+    It 'leaves a key it does not own untouched' {
+        (Set-DotJsonSchemeColor -Line $Obj -Start 0 -End 5 -Color $Want).Lines[3] |
+            Should -BeExactly '            "name": "Tokyo Night",'
+    }
+    It 'reports only the keys that actually moved' {
+        $r = Set-DotJsonSchemeColor -Line $Obj -Start 0 -End 5 -Color $Want
+        @($r.Changed).Count | Should -Be 2
+        ($r.Changed.Key | Sort-Object) -join ',' | Should -Be 'background,cyan'
+    }
+    It 'reports in sync when every value already matches' {
+        $r = Set-DotJsonSchemeColor -Line $Obj -Start 0 -End 5 -Color ([ordered]@{ red = '#F7768E' })
+        @($r.Changed).Count | Should -Be 0
+        @($r.Missing).Count | Should -Be 0
+    }
+    It 'reports a key the object lacks instead of inserting it' {
+        # Inserting means guessing the app's sort order; the caller treats this as
+        # structural (exit 2) rather than drift.
+        $r = Set-DotJsonSchemeColor -Line $Obj -Start 0 -End 5 -Color ([ordered]@{ purple = '#BB9AF7' })
+        $r.Missing | Should -Be @('purple')
+    }
+    It 'does not touch a matching line OUTSIDE the region' {
+        $lines = @('            "blue": "#000000",') + $Obj
+        $r = Set-DotJsonSchemeColor -Line $lines -Start 1 -End 6 -Color ([ordered]@{ blue = '#7AA2F7' })
+        $r.Lines[0] | Should -BeExactly '            "blue": "#000000",'
+        $r.Missing  | Should -Be @('blue')
+    }
+}
+
 Describe 'Get-DotResidualHex' {
     BeforeAll { $Pal = Get-DotPalette -Line $FixturePalette }
     It 'passes a file whose hexes are all palette values' {
@@ -187,6 +328,7 @@ Describe 'gen-theme.ps1 end-to-end (hermetic fixture)' {
         $Fixture = Join-Path ([IO.Path]::GetTempPath()) ('gentheme-fx-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path (Join-Path $Fixture 'theme') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $Fixture 'psmux') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $Fixture 'windows-terminal') -Force | Out-Null
         [IO.File]::WriteAllText((Join-Path $Fixture 'theme/palette.toml'),
             ($FixturePalette -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
 
@@ -199,6 +341,62 @@ Describe 'gen-theme.ps1 end-to-end (hermetic fixture)' {
             'set -g @tn_bg      "#000000"'
             '# core:theme:end psmux-palette'
             '# hand-authored below'
+        ) -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+
+        # The OTHER shape: the app-owned JSON, in Windows Terminal's own serializer style.
+        # It carries all twenty keys the emitter owns, because a missing one is a
+        # STRUCTURAL failure (exit 2) and would mask the drift this fixture is testing.
+        # Three seeds are deliberate: `background` and `blue` are plain wrong, `cyan` is
+        # the RIGHT VALUE IN THE WRONG CASE, and every hex the generator does not own is
+        # a palette value so the residual scan stays quiet.
+        #
+        # Two traps, as in the unit tests above: a profile sharing the scheme's name, and
+        # a second scheme (with a braced name) that must not move.
+        $JsonPath = Join-Path $Fixture 'windows-terminal/settings.json'
+        [IO.File]::WriteAllText($JsonPath, (@(
+            '{'
+            '    "profiles":'
+            '    {'
+            '        "list":'
+            '        ['
+            '            {'
+            '                "guid": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",'
+            '                "name": "Tokyo Night"'
+            '            }'
+            '        ]'
+            '    },'
+            '    "schemes":'
+            '    ['
+            '        {'
+            '            "background": "#1F2335",'
+            '            "name": "Campbell {legacy}"'
+            '        },'
+            '        {'
+            '            "background": "#000000",'
+            '            "black": "#414868",'
+            '            "blue": "#000000",'
+            '            "brightBlack": "#414868",'
+            '            "brightBlue": "#7AA2F7",'
+            '            "brightCyan": "#7DCFFF",'
+            '            "brightGreen": "#9ECE6A",'
+            '            "brightPurple": "#BB9AF7",'
+            '            "brightRed": "#F7768E",'
+            '            "brightWhite": "#C0CAF5",'
+            '            "brightYellow": "#E0AF68",'
+            '            "cursorColor": "#C0CAF5",'
+            '            "cyan": "#7dcfff",'
+            '            "foreground": "#A9B1D6",'
+            '            "green": "#9ECE6A",'
+            '            "name": "Tokyo Night",'
+            '            "purple": "#BB9AF7",'
+            '            "red": "#F7768E",'
+            '            "selectionBackground": "#2E3C64",'
+            '            "white": "#C0CAF5",'
+            '            "yellow": "#E0AF68"'
+            '        }'
+            '    ],'
+            '    "themes": []'
+            '}'
         ) -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
     }
     AfterAll { if (Test-Path $Fixture) { Remove-Item -Recurse -Force $Fixture } }
@@ -219,10 +417,34 @@ Describe 'gen-theme.ps1 end-to-end (hermetic fixture)' {
         $txt | Should -Match '# hand-authored above'
         $txt | Should -Match '# hand-authored below'
     }
+    It 'rewrites the JSON scheme, preserving indentation and the trailing comma' {
+        # Byte-for-byte on everything but the six hex digits — the whole point of the
+        # line-scoped rewrite over a ConvertTo-Json reserialize.
+        $lines = [IO.File]::ReadAllText($JsonPath) -split "`n"
+        $lines | Should -Contain '            "background": "#24283B",'
+        $lines | Should -Contain '            "blue": "#7AA2F7",'
+    }
+    It 'emits UPPERCASE hex, so the app does not rewrite it back on next launch' {
+        # `cyan` was seeded as the right value in the wrong case (#7dcfff).
+        ([IO.File]::ReadAllText($JsonPath) -split "`n") | Should -Contain '            "cyan": "#7DCFFF",'
+    }
+    It 'leaves the OTHER scheme and the same-named profile alone' {
+        $txt = [IO.File]::ReadAllText($JsonPath)
+        $txt | Should -Match '"background": "#1F2335"'
+        $txt | Should -Match '"guid": "\{574e775e-4f2a-5b96-ac1e-a2962a402336\}"'
+    }
+    It 'leaves a non-colour key inside the scheme untouched' {
+        [IO.File]::ReadAllText($JsonPath) | Should -Match '"name": "Tokyo Night"'
+    }
+    It 'still parses as JSON — tests/Invoke-Validation.ps1 gates every *.json' {
+        { [IO.File]::ReadAllText($JsonPath) | ConvertFrom-Json } | Should -Not -Throw
+    }
     It 'is idempotent — a second run changes nothing' {
-        $before = Get-Content -Raw $ConfPath
+        $before     = Get-Content -Raw $ConfPath
+        $beforeJson = Get-Content -Raw $JsonPath
         $null = & pwsh -NoProfile -File $script:GenTheme -Root $Fixture 2>&1
         Get-Content -Raw $ConfPath | Should -BeExactly $before
+        Get-Content -Raw $JsonPath | Should -BeExactly $beforeJson
     }
     It '-Check exits 0 once the tree is generated' {
         $null = & pwsh -NoProfile -File $script:GenTheme -Check -Root $Fixture 2>&1
@@ -232,6 +454,10 @@ Describe 'gen-theme.ps1 end-to-end (hermetic fixture)' {
         # .gitattributes pins the working tree to LF on every OS and the validator
         # enforces it; Set-Content would have written CRLF here.
         ([IO.File]::ReadAllText($ConfPath)) | Should -Not -Match "`r`n"
+        # The JSON target has a second reason: tests/Format-AppJson.ps1 normalizes it to
+        # LF with one final newline, and a generator that wrote CRLF would fight the hook.
+        ([IO.File]::ReadAllText($JsonPath)) | Should -Not -Match "`r`n"
+        ([IO.File]::ReadAllText($JsonPath)) | Should -BeLike "*}`n"
     }
     It 'exits 2 when the palette is missing entirely' {
         # Structural failure, NOT drift: there is nothing to compare against, so
@@ -242,6 +468,44 @@ Describe 'gen-theme.ps1 end-to-end (hermetic fixture)' {
             $null = & pwsh -NoProfile -File $script:GenTheme -Check -Root $bare 2>&1
             $LASTEXITCODE | Should -Be 2
         } finally { Remove-Item -Recurse -Force $bare }
+    }
+}
+
+Describe 'the JSON target fails STRUCTURALLY, not as drift' {
+    # Sticky severity, 2 > 1 > 0. Both cases below leave nothing to compare against, so
+    # reporting "drift" (exit 1, "run gen-theme.ps1 to fix it") would send the user to a
+    # command that cannot help. The marker kind already treats its equivalents — a
+    # deleted marker pair, an unterminated region — the same way.
+    BeforeAll {
+        function New-JsonOnlyFixture {
+            param([string[]]$Scheme)
+            $dir = Join-Path ([IO.Path]::GetTempPath()) ('gentheme-json-' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path (Join-Path $dir 'theme') -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $dir 'windows-terminal') -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $dir 'theme/palette.toml'),
+                ($FixturePalette -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+            [IO.File]::WriteAllText((Join-Path $dir 'windows-terminal/settings.json'),
+                ((@('{', '    "schemes":', '    [', '        {') + $Scheme + @('        }', '    ]', '}')) -join "`n") + "`n",
+                [Text.UTF8Encoding]::new($false))
+            return $dir
+        }
+    }
+    It 'exits 2 when no scheme carries the registered name' {
+        $dir = New-JsonOnlyFixture -Scheme @('            "name": "Nord"')
+        try {
+            $null = & pwsh -NoProfile -File $script:GenTheme -Check -Root $dir 2>&1
+            $LASTEXITCODE | Should -Be 2
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+    It 'exits 2 when the scheme is missing a colour key the emitter owns' {
+        # How the app dropping a key it considers default would surface — named, rather
+        # than silently generating the other nineteen.
+        $dir = New-JsonOnlyFixture -Scheme @('            "background": "#24283B",', '            "name": "Tokyo Night"')
+        try {
+            $out = & pwsh -NoProfile -File $script:GenTheme -Check -Root $dir 2>&1
+            $LASTEXITCODE | Should -Be 2
+            ($out -join "`n") | Should -Match 'selectionBackground'
+        } finally { Remove-Item -Recurse -Force $dir }
     }
 }
 

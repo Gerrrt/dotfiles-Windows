@@ -655,5 +655,6 @@ system — covering the PowerShell shell, psmux, the tiling desktop, maintenance
 editor tiers. `nvim/`, `starship/starship.toml` and `theme/palette.toml` are **mirrored from
 `dotfiles-core`** (via `nvim-sync.ps1` / `starship-sync.ps1` / `theme-sync.ps1`): change those
 upstream in dotfiles-core and re-sync, never hand-edit here. The same goes for any hex inside a
-`# core:theme:gen` marker — those are rendered from the palette by `gen-theme.ps1`. Everything else (`powershell/`, `psmux/`, `desktop/`, `packages/`, `git/`, `jj/`,
+`# core:theme:gen` marker and for the `Tokyo Night` scheme in `windows-terminal/settings.json` —
+those are rendered from the palette by `gen-theme.ps1`. Everything else (`powershell/`, `psmux/`, `desktop/`, `packages/`, `git/`, `jj/`,
 `ssh/`, `wsl/`, the entry points) is edited here directly — this repo vendors no `core/` subtree.*

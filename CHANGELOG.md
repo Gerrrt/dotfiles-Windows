@@ -8,6 +8,30 @@ so entries are grouped by theme rather than strict semver releases.
 
 ### Added
 
+- **`windows-terminal/settings.json`'s colour scheme is generated from
+  `theme/palette.toml` (#230).** The twenty hexes in the `Tokyo Night` scheme were the
+  largest hand-typed colour block left after #228 — deliberately skipped that round,
+  because the file is APP-OWNED: `install.ps1` symlinks it into all three Windows
+  Terminal flavours' `LocalState`, the app rewrites *this copy* on every settings
+  change, and its JSON writer strips comments, so a `// core:theme:gen` marker would
+  not survive the first toggle. `gen-theme.ps1` therefore grew a second emitter
+  **kind**. `json-scheme` finds the scheme object by its own `"name"` (the app re-sorts
+  the array alphabetically, so an index is not stable), scoped to the `schemes` array
+  so a profile sharing that name cannot be hit, and rewrites the hex values on the
+  lines they already occupy — indentation, key order and trailing commas preserved
+  byte for byte. Deliberately **not** a `ConvertFrom-Json | ConvertTo-Json` round trip,
+  which would reformat all 227 lines every run and fight `tests/Format-AppJson.ps1`'s
+  no-re-indent rule. It emits UPPERCASE hex because the app does; lowercase would make
+  every GUI round-trip a twenty-line colour diff. Registering the file also turns on
+  the residual-hex scan over it for free, so a hex the palette does not define can no
+  longer be dropped anywhere in that file.
+- **The last two night-style hexes are gone.** `background` was `#1A1B26` and
+  `selectionBackground` `#28344A` — tokyonight *night* values in a palette pinned to
+  *storm*, and the same pair #229 had already replaced twice elsewhere
+  (`ListPredictionSelected`, `Get-DotAnsiSgr`'s `Black`). They now resolve to
+  `color_bg` `#24283B` and `color_bg_visual` `#2E3C64`, so the terminal's selection
+  highlight finally matches PSReadLine's prediction bar and its canvas matches
+  psmux's `@tn_bg`. The other eighteen already agreed with Core and did not move.
 - **The `core` front door reaches the second family: `core update check` and
   `core maint <install|run|log|status|uninstall>` (dotgibson/dotfiles-core#684).**
   Core's zsh dispatcher grew the same arms in the same change, and its `PARITY.md`

@@ -39,13 +39,16 @@ otherwise run different code than CI.
   `nvim-sync.ps1` / `starship-sync.ps1` / `theme-sync.ps1`. A local edit will fail the
   parity gate, and `robocopy /MIR` would purge nvim's on the next sync anyway.
 - **Don't hand-edit a colour.** Every hex inside a `# core:theme:gen <id>` marker in
-  `powershell/core/` and `psmux/` is rendered from `theme/palette.toml` by
+  `powershell/core/` and `psmux/`, and every colour in the `Tokyo Night` scheme in
+  `windows-terminal/settings.json`, is rendered from `theme/palette.toml` by
   `gen-theme.ps1`, and `gen-theme.ps1 -Check` fails the PR that edits one by hand.
   Change the colour in Core, `theme-sync.ps1`, then `gen-theme.ps1`. This rule exists
   because the previous convention — a comment saying the block was "kept byte-for-byte
   in step with Core" — was false for three fzf values and nothing noticed (#228). The
   gate also rejects any hex in those files that the palette does not define at all, so
   a new hand-typed colour cannot sneak in beside a generated one.
+  **Picking a colour in Windows Terminal's Settings pane counts as a hand-edit** and
+  will fail the gate on your next commit (#230).
 - **`bootstrap.ps1` must stay ASCII.** It is stored UTF-8 with no BOM, so Windows
   PowerShell 5.1 reads it as the ANSI codepage — a single em-dash makes the
   *parser* fail before the version guard can print anything useful. 5.1 users are
@@ -58,7 +61,9 @@ otherwise run different code than CI.
 - **`windows-terminal/settings.json` is app-owned.** Windows Terminal rewrites it
   on exit. Run `pwsh -NoProfile -File tests/Format-AppJson.ps1` (the pre-commit
   hook does this) rather than hand-fixing whitespace, and don't re-indent it — the
-  `.editorconfig` carve-out matches what the app writes on purpose.
+  `.editorconfig` carve-out matches what the app writes on purpose. Its colour
+  scheme is the one exception: `gen-theme.ps1` owns those twenty values and rewrites
+  them in place, without reflowing anything the app is responsible for.
 
 ## Style
 

@@ -28,8 +28,12 @@ those rather than hand-editing drift.
 
 The palette is the odd one out and the one to understand: it is an **input**, not a
 leaf config. `gen-theme.ps1` renders it into nine marked `# core:theme:gen <id>` blocks
-across `powershell/core/` and `psmux/`, and `gen-theme.ps1 -Check` gates every PR. So
-**never hand-edit a colour** — change it in Core, re-sync, regenerate. Before #228 this
+across `powershell/core/` and `psmux/`, plus — since #230 — the `Tokyo Night` scheme in
+`windows-terminal/settings.json`, which is app-owned and so gets a *structural* JSON
+rewrite keyed on the scheme's `"name"` instead of a marker pair (Windows Terminal strips
+comments when it rewrites the file through the symlink). `gen-theme.ps1 -Check` gates
+every PR. So **never hand-edit a colour** — and that now includes picking one in Windows
+Terminal's Settings pane — change it in Core, re-sync, regenerate. Before #228 this
 repo hand-copied its hexes and three fzf values had silently drifted from Core under a
 comment claiming they matched.
 

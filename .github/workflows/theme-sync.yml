@@ -2,7 +2,7 @@ name: theme-sync
 
 # Keep theme/palette.toml in step with dotfiles-core, and REGENERATE the terminal
 # layer from it. Core authors every colour in that one flat table (dotfiles-core#679);
-# this host renders it into nine blocks across six files via gen-theme.ps1. The bot
+# this host renders it into ten blocks across seven files via gen-theme.ps1. The bot
 # runs weekly and opens a PR when Core's palette has ACTUALLY changed, so a fleet-wide
 # restyle reaches this repo instead of leaving it the one that still types the numbers
 # (#228). First-party (GITHUB_TOKEN + gh, no third-party action); workflow_dispatch
