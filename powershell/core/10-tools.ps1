@@ -143,8 +143,25 @@ if ($script:DotAvailModules.Contains('PSReadLine')) {
     # Up/Down do prefix-based history search (type `git ` then Up)
     Set-PSReadLineKeyHandler -Key UpArrow   -Function HistorySearchBackward
     Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward
-    # Ctrl+arrow word movement; Tab = menu complete
+    # Tab = menu complete
     Set-PSReadLineKeyHandler -Key Tab       -Function MenuComplete
+    # Ctrl+arrow word movement — cross-shell parity with Core's zsh, which binds
+    # Ctrl+←/→ to backward-word/forward-word in BOTH viins and vicmd
+    # (zsh/40-bindings.zsh). PSReadLine already DEFAULTS to exactly these functions, so
+    # this is behaviour-preserving; the point is that the config now says what it does,
+    # and a future PSReadLine or -EditMode change can't move word nav without this line
+    # moving too (PARITY.md's Word nav row was the only one resting on a default).
+    # NextWord — not ForwardWord — is both the default and the match for zsh's
+    # forward-word: both land the cursor on the START of the next word, where
+    # ForwardWord lands on the END of the current one.
+    # A bare -Key lands in the Vi INSERT table only, so pin Command mode explicitly too.
+    # NOT column-aligned like the Tab/arrow lines above, deliberately: Core's
+    # scripts/parity-check.sh matches its needles with `grep -F`, so padding here would
+    # make the Word nav row's needle whitespace-brittle in another repo.
+    Set-PSReadLineKeyHandler -Key Ctrl+LeftArrow -Function BackwardWord
+    Set-PSReadLineKeyHandler -Key Ctrl+RightArrow -Function NextWord
+    Set-PSReadLineKeyHandler -Key Ctrl+LeftArrow -Function BackwardWord -ViMode Command
+    Set-PSReadLineKeyHandler -Key Ctrl+RightArrow -Function NextWord -ViMode Command
     # F2 flips between the inline ghost and the multi-row dropdown on demand — the
     # low-churn InlineView stays the default (see the PredictionViewStyle note above),
     # but the richer ListView is one key away when you want several ranked sources at
