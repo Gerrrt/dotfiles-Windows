@@ -52,7 +52,7 @@ so entries are grouped by theme rather than strict semver releases.
 - **`Get-DotAccentSpec` — the accent half of theme parity, which this host simply did
   not have.** Core's `zsh/05-ui.zsh` has `_CORE_ACCENT_SPEC` / `_CORE_MUTED_SPEC`, the
   one place `$COLORTERM` is interpreted, with a truecolor tier and a hand-picked
-  256-colour fallback. `grep -rn 'CORE_ACCENT|AccentSpec' powershell/` returned nothing
+  256-colour fallback. `grep -rnE 'CORE_ACCENT|AccentSpec' powershell/` returned nothing
   here, so PARITY.md's accent row was a genuine gap rather than a drift. The pwsh twin
   lives in `powershell/core/05-lib.ps1` beside `Get-DotAnsiSgr` and is generated from
   the same palette. The two fallback forms deliberately disagree (SGR `111`/`103` vs
