@@ -110,8 +110,12 @@ Describe 'repo hygiene' {
                             '-Key Ctrl+RightArrow -Function NextWord') {
             ([regex]::Matches($t, [regex]::Escape($needle))).Count |
                 Should -Be 2 -Because "parity-check.sh greps '$needle' verbatim, once per Vi table"
+            # ...and exactly one of those two is the Command-mode line. Naming the specific
+            # binding beats counting '-ViMode Command' across the whole file, which any
+            # unrelated future command-mode binding would break for no real reason.
+            ([regex]::Matches($t, [regex]::Escape("$needle -ViMode Command"))).Count |
+                Should -Be 1 -Because 'Core binds word nav in vicmd as well as viins'
         }
-        ([regex]::Matches($t, '-ViMode Command')).Count | Should -Be 2
     }
     It 'Maintenance.ps1 has no garbled nested-hash comment' {
         $m = Get-Content (Join-Path $RepoRoot 'maint/Maintenance.ps1') -Raw
