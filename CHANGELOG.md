@@ -25,6 +25,21 @@ so entries are grouped by theme rather than strict semver releases.
 
 ### Changed
 
+- **`desktop/PARITY.md`'s shared half is now generated and gated, and the "identical
+  copy" claim in `desktop/README.md` is corrected (dotgibson/dotfiles-core#693).** This
+  file and `dotfiles-MacBook/sketchybar/PARITY.md` were an admitted verbatim pair held
+  together by nothing but the sentence *"Edit both together"* — and they had drifted
+  **3.5 KB apart**. Most of that was a one-sided Markdown reformat with no semantic
+  content; the real divergence was **947 bytes of Windows-only prose** — the psmux
+  battery-scale note — that had never been marked as a deliberate divergence. The shared
+  contract now lives between `<!-- desktop-parity:gen -->` markers, rendered from
+  `dotfiles-core/desktop/PARITY.shared.md` by `make gen-desktop-parity`; Core's
+  `gen-desktop-parity.sh --check` fails the weekly `parity-check` run if either copy is
+  edited alone. **The psmux note is unchanged in substance and stays here**, below the
+  markers where the generator does not touch it, now labelled `deliberate` — so
+  `TERMINAL_WORKFLOW_GUIDE.md`'s pointer at the 40–60 % disagreement still resolves. Edit
+  the Core source, not this file's generated block.
+
 - **The module step no longer re-downloads modules it already has**, which is what
   had `module update: PSReadLine` failing on every run. `Save-Module -Force`
   rewrites `<Path>\<Name>\<Version>` **wholesale even when that exact version is
