@@ -48,4 +48,4 @@ jobs:
     # This repo is outside scripts/os-repos.txt (it vendors no core/), so no fan-out and
     # no `make fleet-drift` moves or reports this line — it advances only when a human
     # does it. It sat at v4.12.0 until 2026-08-26 for exactly that reason.
-    uses: dotgibson/dotfiles-core/.github/workflows/auto-tag-call.yml@db940285d0cf9d71bf99bc78cda21e4862dd7419 # v5.0.2
+    uses: dotgibson/dotfiles-core/.github/workflows/auto-tag-call.yml@c0cd22b22819aa8113ce37e548757eeeb8736f77 # v7.0.0
