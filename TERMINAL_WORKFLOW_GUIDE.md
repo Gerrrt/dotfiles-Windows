@@ -370,6 +370,7 @@ the active pane stays the key-press target (used by `psmux-url.ps1`'s `capture-p
 | PSReadLine | `EditMode Vi` | modal editing (parity with zsh-vi-mode) | Vim keys at the prompt |
 | PSReadLine | `Up` / `Down` | `HistorySearchBackward/Forward` | Prefix-filtered history |
 | PSReadLine | `Tab` | `MenuComplete` | Cycle completion menu |
+| PSReadLine | `Ctrl+←` / `Ctrl+→` | `BackwardWord` / `NextWord` (both Vi modes) | Jump by word while editing |
 | PSReadLine | `Ctrl+t` | PSFzf file picker (lazy) | Insert a fuzzy-picked file |
 | PSReadLine | `Ctrl+r` | PSFzf fuzzy history (lazy) | Quick history search |
 | PSReadLine | `Ctrl+e` | `Invoke-AtuinSearch` | Atuin full-history TUI |
@@ -655,5 +656,6 @@ system — covering the PowerShell shell, psmux, the tiling desktop, maintenance
 editor tiers. `nvim/`, `starship/starship.toml` and `theme/palette.toml` are **mirrored from
 `dotfiles-core`** (via `nvim-sync.ps1` / `starship-sync.ps1` / `theme-sync.ps1`): change those
 upstream in dotfiles-core and re-sync, never hand-edit here. The same goes for any hex inside a
-`# core:theme:gen` marker — those are rendered from the palette by `gen-theme.ps1`. Everything else (`powershell/`, `psmux/`, `desktop/`, `packages/`, `git/`, `jj/`,
+`# core:theme:gen` marker and for the `Tokyo Night` scheme in `windows-terminal/settings.json` —
+those are rendered from the palette by `gen-theme.ps1`. Everything else (`powershell/`, `psmux/`, `desktop/`, `packages/`, `git/`, `jj/`,
 `ssh/`, `wsl/`, the entry points) is edited here directly — this repo vendors no `core/` subtree.*

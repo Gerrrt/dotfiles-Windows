@@ -18,6 +18,12 @@
 #  The .editorconfig carries a matching carve-out so the declared style is the
 #  truth rather than an aspiration. Everything the app cannot undo IS enforced.
 #
+#  NOT A COMPETITOR TO gen-theme.ps1, which since #230 owns the twenty colours in
+#  settings.json's "Tokyo Night" scheme. The two are disjoint by construction: that
+#  generator rewrites hex VALUES on the lines they already occupy and touches no
+#  whitespace, and this normalizes whitespace and touches no value. Both are line-
+#  scoped for the same reason — a ConvertTo-Json round trip would rewrite the file.
+#
 #  Usage:
 #    pwsh -NoProfile -File tests/Format-AppJson.ps1           # fix in place
 #    pwsh -NoProfile -File tests/Format-AppJson.ps1 -Check    # report only, exit 1 on drift

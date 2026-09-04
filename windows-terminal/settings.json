@@ -198,7 +198,7 @@
     "schemes":
     [
         {
-            "background": "#1A1B26",
+            "background": "#24283B",
             "black": "#414868",
             "blue": "#7AA2F7",
             "brightBlack": "#414868",
@@ -216,7 +216,7 @@
             "name": "Tokyo Night",
             "purple": "#BB9AF7",
             "red": "#F7768E",
-            "selectionBackground": "#28344A",
+            "selectionBackground": "#2E3C64",
             "white": "#C0CAF5",
             "yellow": "#E0AF68"
         }
