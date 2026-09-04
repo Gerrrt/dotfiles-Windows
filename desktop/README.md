@@ -93,9 +93,17 @@ The bar is kept at **design parity with the macOS host's sketchybar** bar
 (`dotfiles-MacBook/sketchybar`): same module order, floating rounded geometry,
 CaskaydiaCove Nerd Font, Tokyo Night Storm palette, semantic load colors
 (cpu/mem/disk green→yellow→red, volume cyan) and glyphs. The shared contract lives
-in **`PARITY.md`** (an identical copy sits in `dotfiles-MacBook/sketchybar/`) —
-change both bars together. Layout — **three floating islands** (transparent bar; each
-zone is its own rounded panel with a colored rim: left blue · center magenta · right green):
+in **`PARITY.md`**, inside a generated block rendered from
+`dotfiles-core/desktop/PARITY.shared.md`. That block is byte-identical to the one in
+`dotfiles-MacBook/sketchybar/PARITY.md`; the two **files** are not, and are not meant to
+be — this one adds a Windows-only psmux addendum below the block, marked `deliberate`.
+Don't edit the block here: change `dotfiles-core/desktop/PARITY.shared.md` and run
+`make gen-desktop-parity` there. Core's `scripts/gen-desktop-parity.sh --check` gates it
+weekly, so a one-sided edit goes red instead of drifting quietly
+(dotgibson/dotfiles-core#693).
+
+Layout — **three floating islands** (transparent bar; each zone is its own rounded panel
+with a colored rim: left blue · center magenta · right green):
 
 ```
 [ logo · workspaces · [binding-mode] · front-app · pomodoro · weather ]   [ clock ]   [ network · volume · │ · disk · memory · cpu · │ · battery · power ]
